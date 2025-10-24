@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "164624751065",
+    "project_id": "ai-helmet-2186c",
+    "storage_bucket": "ai-helmet-2186c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:164624751065:android:a2b6694ff8d1f0210761c8",
+        "android_client_info": {
+          "package_name": "com.example.isd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtafvhIWT1fU8_Sa0cOLCLEWoa-YmHsH8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
