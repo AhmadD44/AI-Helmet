@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:isd/features/auth/data/auth.dart';
+import 'package:email_validator/email_validator.dart';
 import 'package:isd/features/auth/presentation/view/signin.dart';
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -14,6 +16,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _contact2Controller = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool isloading = false;
+  final _formKey = GlobalKey<FormState>();
 
   InputDecoration aiInputDecoration(String hint, IconData icon) {
     const borderColor = Color(0xFF00D1FF);
@@ -38,104 +42,122 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.sensors_rounded,
-                    color: Theme.of(context).colorScheme.secondary, size: 90),
-                const SizedBox(height: 12),
-                const Text(
-                  "Join AI Helmet",
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Ride smarter, safer, and connected.",
-                  style: TextStyle(color: Colors.white70),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-
-                // Full name
-                TextField(
-                  controller: _nameController,
-                  decoration:
-                      aiInputDecoration("Full Name", Icons.person_outline),
-                ),
-                const SizedBox(height: 16),
-
-                // Emergency contact 1
-                TextField(
-                  controller: _contact1Controller,
-                  decoration:
-                      aiInputDecoration("Suggested Emergency contact 1", Icons.person_2_outlined),
-                ),
-                const SizedBox(height: 16),
-
-                // Emergency contact 2
-                TextField(
-                  controller: _contact2Controller,
-                  decoration:
-                      aiInputDecoration("Suggested Emergency contact 2", Icons.person_2_outlined),
-                ),
-                const SizedBox(height: 16),
-
-                // Email
-                TextField(
-                  controller: _emailController,
-                  decoration:
-                      aiInputDecoration("Email", Icons.email_outlined),
-                ),
-                const SizedBox(height: 16),
-
-                // Password
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration:
-                      aiInputDecoration("Password", Icons.lock_outline),
-                ),
-                const SizedBox(height: 24),
-
-                // Phone Number
-                TextField(
-                  controller: _phoneController,
-                  decoration:
-                      aiInputDecoration("Phone Number", Icons.phone),
-                ),
-                const SizedBox(height: 16),
-
-                ElevatedButton(
-                  onPressed: () {
-                    // TODO: implement your sign-up logic
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00D1FF),
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Form(
+          key: _formKey,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.sensors_rounded,
+                      color: Theme.of(context).colorScheme.secondary, size: 90),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Join AI Helmet",
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
-                  child: const Center(child: Text("Create Account")),
-                ),
-                const SizedBox(height: 16),
-
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SignInScreen(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Ride smarter, safer, and connected.",
+                    style: TextStyle(color: Colors.white70),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+          
+                  // Full name
+                  TextField(
+                    controller: _nameController,
+                    decoration:
+                        aiInputDecoration("Full Name", Icons.person_outline),
+                  ),
+                  const SizedBox(height: 16),
+          
+                  // Emergency contact 1
+                  TextField(
+                    controller: _contact1Controller,
+                    decoration:
+                        aiInputDecoration("Suggested Emergency contact 1", Icons.person_2_outlined),
+                  ),
+                  const SizedBox(height: 16),
+          
+                  // Emergency contact 2
+                  TextField(
+                    controller: _contact2Controller,
+                    decoration:
+                        aiInputDecoration("Suggested Emergency contact 2", Icons.person_2_outlined),
+                  ),
+                  const SizedBox(height: 16),
+          
+                  // Email
+                  TextFormField(
+                    controller: _emailController,
+                    decoration:
+                        aiInputDecoration("Email", Icons.email_outlined),
+                    validator: (value) {return value != null && !EmailValidator.validate(value) ? "Enter a valid email" : null;},
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        keyboardType: TextInputType.emailAddress,
+        obscureText: false,    
+                  ),
+                  const SizedBox(height: 16),
+          
+                  // Password
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration:
+                        aiInputDecoration("Password", Icons.lock_outline),
+                    validator: (value) {return value!.length < 6 ? "Enter at least 6 characters": null;},
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        keyboardType: TextInputType.text,
+        obscureText: true,    
+                  ),
+                  const SizedBox(height: 24),
+          
+                  // Phone Number
+                  TextField(
+                    controller: _phoneController,
+                    decoration:
+                        aiInputDecoration("Phone Number", Icons.phone),
+                  ),
+                  const SizedBox(height: 16),
+          
+                  ElevatedButton(
+                    onPressed: () async{
+                      // TODO: implement your sign-up logic
+                       await Auth().signUp(_emailController.text, _passwordController.text, context);
+                      //  Navigator.push(
+                      //   context,
+                      //   MaterialPageRoute(
+                      //     builder: (context) => const SignInScreen(),
+                      //   ),);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00D1FF),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    );
-                  },
-                  child: const Text("Already have an account? Sign In"),
-                ),
-              ],
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: isloading?
+                    CircularProgressIndicator():
+                    const Center(child: Text("Create Account")),
+                  ),
+                  const SizedBox(height: 16),
+          
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SignInScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text("Already have an account? Sign In"),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

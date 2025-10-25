@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:isd/features/auth/data/auth.dart';
 import 'package:isd/features/auth/presentation/view/signup.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -72,8 +73,9 @@ class _SignInScreenState extends State<SignInScreen> {
                 const SizedBox(height: 24),
 
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async{
                     // TODO: implement your sign-in logic
+                    await Auth().signIn(_emailController.text, _passwordController.text, context);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00D1FF),
