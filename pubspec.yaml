@@ -38,6 +38,7 @@ dependencies:
   firebase_core: ^4.2.0
   email_validator: ^3.0.0
   another_flushbar: ^1.12.32
+  cloud_firestore: ^6.0.3
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,6 @@
+import 'dart:ffi';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:another_flushbar/flushbar.dart';
@@ -8,6 +11,10 @@ class Auth {
   Future<void> signUp(
     String email,
     String password,
+    String username,
+    int contact1,
+    int contact2,
+    int phoneNb,
     BuildContext context,
   ) async {
     try {
@@ -15,6 +22,19 @@ class Auth {
         email: email,
         password: password,
       );
+
+      
+      CollectionReference users = FirebaseFirestore.instance.collection('users');
+      users
+    .doc(userCredential.user!.uid)
+    .set({
+      'username': username,
+      'email': email,
+      'password': password,
+      'contact1': contact1,
+      'contact2': contact2,
+      'phoneNb': phoneNb
+    });
 
       final user = userCredential.user;
 
@@ -30,9 +50,9 @@ class Auth {
         );
       }
     } on FirebaseAuthException catch (e) {
-      _showErrorSnackBar(context, e.message);
+      showErrorSnackBar(context, e.message);
     } catch (e) {
-      _showErrorSnackBar(context, 'An unexpected error occurred');
+      showErrorSnackBar(context, 'An unexpected error occurred');
     }
   }
 
@@ -51,7 +71,7 @@ class Auth {
 
       if (user != null && !user.emailVerified) {
         await _auth.signOut(); // Optional: Sign them out immediately
-        _showErrorSnackBar(context, "Please verify your email before signing in.");
+        showErrorSnackBar(context, "Please verify your email before signing in.");
         return;
       }
 
@@ -66,9 +86,9 @@ class Auth {
         ),
       );
     } on FirebaseAuthException catch (e) {
-      _showErrorSnackBar(context, e.message);
+      showErrorSnackBar(context, e.message);
     } catch (e) {
-      _showErrorSnackBar(context, 'An unexpected error occurred');
+      showErrorSnackBar(context, 'An unexpected error occurred');
     }
   }
 
@@ -87,13 +107,13 @@ class Auth {
         ),
       );
     } on FirebaseAuthException catch (e) {
-      _showErrorSnackBar(context, e.message);
+      showErrorSnackBar(context, e.message);
     } catch (e) {
-      _showErrorSnackBar(context, 'An unexpected error occurred');
+      showErrorSnackBar(context, 'An unexpected error occurred');
     }
   }
 
-  void _showErrorSnackBar(BuildContext context, String? message) {
+  void showErrorSnackBar(BuildContext context, String? message) {
     Flushbar(
       message: message,
       icon: const Icon(Icons.error_outline, color: Colors.white),
