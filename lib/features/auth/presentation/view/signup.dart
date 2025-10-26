@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:isd/features/auth/data/auth.dart';
 import 'package:email_validator/email_validator.dart';
 import 'package:isd/features/auth/presentation/view/signin.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:isd/features/auth/presentation/view_model/signup/signup_cubit.dart';
+import 'package:isd/features/auth/presentation/view_model/signup/signup_state.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -41,186 +44,204 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.sensors_rounded,
-                    color: Theme.of(context).colorScheme.secondary,
-                    size: 90,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "Join AI Helmet",
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    "Ride smarter, safer, and connected.",
-                    style: TextStyle(color: Colors.white70),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Full name
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: aiInputDecoration(
-                      "Username",
-                      Icons.person_outline,
+    return BlocListener<SignupCubit, SignupState>(
+      listener: (BuildContext context, state) { 
+        if (state is SignupLoading) {
+          isloading = true;
+        } else if (state is SignupSuccess) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => SignInScreen()),
+          );
+          isloading = false;
+        } else if (state is SignupFailure) {
+          isloading = false;
+        }
+       },
+      child: Scaffold(
+        body: SafeArea(
+          child: Form(
+            key: _formKey,
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.sensors_rounded,
+                      color: Theme.of(context).colorScheme.secondary,
+                      size: 90,
                     ),
-                    validator: (value) {
-                      return value!.length < 4
-                          ? "Username should be atleast 4 characters"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Emergency contact 1
-                  TextFormField(
-                    controller: _contact1Controller,
-                    decoration: aiInputDecoration(
-                      "Suggested Emergency contact 1",
-                      Icons.person_2_outlined,
+                    const SizedBox(height: 12),
+                    const Text(
+                      "Join AI Helmet",
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                     ),
-                    validator: (value) {
-                      return value!.length != 8
-                          ? "Enter valid phone number"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Emergency contact 2
-                  TextFormField(
-                    controller: _contact2Controller,
-                    decoration: aiInputDecoration(
-                      "Suggested Emergency contact 2",
-                      Icons.person_2_outlined,
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Ride smarter, safer, and connected.",
+                      style: TextStyle(color: Colors.white70),
+                      textAlign: TextAlign.center,
                     ),
-                    validator: (value) {
-                      return value!.length != 8
-                          ? "Enter valid phone number"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Email
-                  TextFormField(
-                    controller: _emailController,
-                    decoration: aiInputDecoration(
-                      "Email",
-                      Icons.email_outlined,
-                    ),
-                    validator: (value) {
-                      return value != null && !EmailValidator.validate(value)
-                          ? "Enter a valid email"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                    keyboardType: TextInputType.emailAddress,
-                    obscureText: false,
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Password
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: aiInputDecoration(
-                      "Password",
-                      Icons.lock_outline,
-                    ),
-                    validator: (value) {
-                      return value!.length < 6
-                          ? "Enter at least 6 characters"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                    keyboardType: TextInputType.text,
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Phone Number
-                  TextFormField(
-                    controller: _phoneController,
-                    decoration: aiInputDecoration("Phone Number", Icons.phone),
-                    validator: (value) {
-                      return value!.length != 8
-                          ? "Enter valid phone number"
-                          : null;
-                    },
-                    autovalidateMode: AutovalidateMode.onUserInteraction,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 16),
-
-                  ElevatedButton(
-                    onPressed: () async {
-                      // TODO: implement your sign-up logic
-                      if (_formKey.currentState!.validate()) {
-                        // setState(() => isloading = true);
-
-                        await Auth().signUp(
-                          _emailController.text,
-                          _passwordController.text,
-                          _nameController.text,
-                          int.parse(_contact1Controller.text),
-                          int.parse(_contact2Controller.text),
-                          int.parse(_phoneController.text),
-                          context,
-                        );
-
-                        // setState(() => isloading = false);
-                      } else {
-                        Auth().showErrorSnackBar(context, "Please fill all required feilds");
-                      }
-                      //  Navigator.push(
-                      //   context,
-                      //   MaterialPageRoute(
-                      //     builder: (context) => const SignInScreen(),
-                      //   ),);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00D1FF),
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: 32),
+      
+                    // Full name
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: aiInputDecoration(
+                        "Username",
+                        Icons.person_outline,
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      validator: (value) {
+                        return value!.length < 4
+                            ? "Username should be atleast 4 characters"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
                     ),
-                    child: isloading
-                        ? CircularProgressIndicator()
-                        : const Center(child: Text("Create Account")),
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SignInScreen(),
+                    const SizedBox(height: 16),
+      
+                    // Emergency contact 1
+                    TextFormField(
+                      controller: _contact1Controller,
+                      decoration: aiInputDecoration(
+                        "Suggested Emergency contact 1",
+                        Icons.person_2_outlined,
+                      ),
+                      validator: (value) {
+                        return value!.length != 8
+                            ? "Enter valid phone number"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+      
+                    // Emergency contact 2
+                    TextFormField(
+                      controller: _contact2Controller,
+                      decoration: aiInputDecoration(
+                        "Suggested Emergency contact 2",
+                        Icons.person_2_outlined,
+                      ),
+                      validator: (value) {
+                        return value!.length != 8
+                            ? "Enter valid phone number"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+      
+                    // Email
+                    TextFormField(
+                      controller: _emailController,
+                      decoration: aiInputDecoration(
+                        "Email",
+                        Icons.email_outlined,
+                      ),
+                      validator: (value) {
+                        return value != null && !EmailValidator.validate(value)
+                            ? "Enter a valid email"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      keyboardType: TextInputType.emailAddress,
+                      obscureText: false,
+                    ),
+                    const SizedBox(height: 16),
+      
+                    // Password
+                    TextFormField(
+                      controller: _passwordController,
+                      decoration: aiInputDecoration(
+                        "Password",
+                        Icons.lock_outline,
+                      ),
+                      validator: (value) {
+                        return value!.length < 6
+                            ? "Enter at least 6 characters"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      keyboardType: TextInputType.text,
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 24),
+      
+                    // Phone Number
+                    TextFormField(
+                      controller: _phoneController,
+                      decoration: aiInputDecoration("Phone Number", Icons.phone),
+                      validator: (value) {
+                        return value!.length != 8
+                            ? "Enter valid phone number"
+                            : null;
+                      },
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    const SizedBox(height: 16),
+      
+                    ElevatedButton(
+                      onPressed: () async {
+                        // TODO: implement your sign-up logic
+                        if (_formKey.currentState!.validate()) {
+                          // setState(() => isloading = true);
+      
+                          await BlocProvider.of<SignupCubit>(context).signUpUser(
+                            email: _emailController.text,
+                            password: _passwordController.text,
+                            username: _nameController.text,
+                            contact1: int.parse(_contact1Controller.text),
+                            contact2: int.parse(_contact2Controller.text),
+                            phoneNb: int.parse(_phoneController.text),
+                            context: context,
+                          );
+      
+                          // setState(() => isloading = false);
+                        } else {
+                          Auth().showErrorSnackBar(
+                            context,
+                            "Please fill all required feilds",
+                          );
+                        }
+                        //  Navigator.push(
+                        //   context,
+                        //   MaterialPageRoute(
+                        //     builder: (context) => const SignInScreen(),
+                        //   ),);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00D1FF),
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      );
-                    },
-                    child: const Text("Already have an account? Sign In"),
-                  ),
-                ],
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: isloading
+                          ? CircularProgressIndicator()
+                          : const Center(child: Text("Create Account")),
+                    ),
+                    const SizedBox(height: 16),
+      
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SignInScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text("Already have an account? Sign In"),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
