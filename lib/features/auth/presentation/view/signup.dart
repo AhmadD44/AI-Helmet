@@ -20,7 +20,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _contact2Controller = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool isloading = false;
   final _formKey = GlobalKey<FormState>();
 
   InputDecoration aiInputDecoration(String hint, IconData icon) {
@@ -42,9 +41,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  bool isloading = false;
   @override
   Widget build(BuildContext context) {
-    return BlocListener<SignupCubit, SignupState>(
+    
+    return BlocConsumer<SignupCubit, SignupState>(
       listener: (BuildContext context, state) { 
         if (state is SignupLoading) {
           isloading = true;
@@ -58,7 +59,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           isloading = false;
         }
        },
-      child: Scaffold(
+      builder: (BuildContext context, SignupState state) { 
+        return Scaffold(
         body: SafeArea(
           child: Form(
             key: _formKey,
@@ -246,7 +248,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
           ),
         ),
-      ),
+      );
+      } 
     );
   }
 }

@@ -14,8 +14,6 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool isloading = false;
-
   InputDecoration aiInputDecoration(String hint, IconData icon) {
     const borderColor = Color(0xFF00D1FF);
     return InputDecoration(
@@ -37,7 +35,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<LoginCubit, LoginState>(
+    
+  bool isloading = false;
+
+    return BlocConsumer<LoginCubit, LoginState>(
       listener: (BuildContext context, state) {
         if (state is LoginLoading) {
           isloading = true;
@@ -51,7 +52,8 @@ class _SignInScreenState extends State<SignInScreen> {
           isloading = false;
         }
       },
-      child: Scaffold(
+      builder: (BuildContext context, LoginState state) { 
+        return Scaffold(
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -113,7 +115,9 @@ class _SignInScreenState extends State<SignInScreen> {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Center(child: Text("Sign In")),
+                    child: isloading
+                          ? CircularProgressIndicator()
+                          : const Center(child: Text("Sign In")),
                   ),
                   const SizedBox(height: 16),
 
@@ -133,7 +137,8 @@ class _SignInScreenState extends State<SignInScreen> {
             ),
           ),
         ),
-      ),
+      );
+       },
     );
   }
 }

@@ -20,6 +20,7 @@ class LoginCubit extends Cubit<LoginState>{
       if (user != null && !user.emailVerified) {
         await Auth().auth.signOut(); // Optional: Sign them out immediately
         Auth().showErrorSnackBar(context, "Please verify your email before signing in.");
+        emit(LoginFailure());
         return;
       }
 

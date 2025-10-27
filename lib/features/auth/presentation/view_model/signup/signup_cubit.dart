@@ -19,6 +19,7 @@ class SignupCubit extends Cubit<SignupState>{
     required context,
     }
   ) async {
+    emit(SignupLoading());
     try {
       final userCredential = await Auth().auth.createUserWithEmailAndPassword(
         email: email,
@@ -51,10 +52,13 @@ class SignupCubit extends Cubit<SignupState>{
           ),
         );
       }
+      emit(SignupSuccess());
     } on FirebaseAuthException catch (e) {
       Auth().showErrorSnackBar(context, e.message);
+      emit(SignupFailure());
     } catch (e) {
       Auth().showErrorSnackBar(context, 'An unexpected error occurred');
+      emit(SignupFailure());
     }
   }
 }
