@@ -41,10 +41,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  bool isloading = false;
+  
   @override
   Widget build(BuildContext context) {
-    
+    bool isloading = false;
     return BlocConsumer<SignupCubit, SignupState>(
       listener: (BuildContext context, state) { 
         if (state is SignupLoading) {

@@ -3,6 +3,7 @@ import 'package:isd/features/auth/presentation/view/signup.dart';
 import 'package:isd/features/auth/presentation/view_model/login/login_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:isd/features/auth/presentation/view_model/login/login_state.dart';
+import 'package:isd/features/home/presentation/home_Screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -45,7 +46,7 @@ class _SignInScreenState extends State<SignInScreen> {
         } else if (state is LoginSuccess) {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => SignUpScreen()),
+            MaterialPageRoute(builder: (context) => HomeScreen()),
           );
           isloading = false;
         } else if (state is LoginFailure) {

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:isd/features/auth/data/auth.dart';
 import 'package:isd/features/auth/presentation/view_model/login/login_state.dart';
 
+
 class LoginCubit extends Cubit<LoginState>{
   LoginCubit() : super(LoginInitial());
 
@@ -34,6 +35,7 @@ class LoginCubit extends Cubit<LoginState>{
           backgroundColor: const Color(0xFF00D1FF),
         ),
       );
+      // Navigator.push(context,MaterialPageRoute(builder: (context) => HomeScreen()));
       emit(LoginSuccess());
     } on FirebaseAuthException catch (e) {
       Auth().showErrorSnackBar(context, e.message ?? 'Auth error');
