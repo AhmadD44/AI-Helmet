@@ -3,7 +3,6 @@ import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 
 class MetricsGrid extends StatelessWidget {
   final Telemetry? telemetry;
-
   const MetricsGrid({super.key, required this.telemetry});
 
   String _fmtDouble(double? v, {int frac = 1, String fallback = '--'}) {
@@ -17,41 +16,18 @@ class MetricsGrid extends StatelessWidget {
     final speedKmh = (t?.speedMps ?? 0) * 3.6;
 
     final items = <_MetricCardData>[
+      _MetricCardData('Heart Rate', (t?.heartRate?.toString() ?? '--'), 'bpm', Icons.favorite),
+      _MetricCardData('Speed', _fmtDouble(speedKmh, frac: 1), 'km/h', Icons.speed),
+      _MetricCardData('Altitude', _fmtDouble(t?.altitude, frac: 0), 'm', Icons.landscape),
+      _MetricCardData('Heading', _fmtDouble(t?.bearing, frac: 0), '°', Icons.explore),
+      _MetricCardData('GPS Accuracy', _fmtDouble(t?.accuracy, frac: 0), 'm', Icons.gps_fixed),
       _MetricCardData(
-        title: 'Heart Rate',
-        value: (t?.heartRate?.toString() ?? '--'),
-        unit: 'bpm',
-        icon: Icons.favorite,
-      ),
-      _MetricCardData(
-        title: 'Speed',
-        value: _fmtDouble(speedKmh, frac: 1),
-        unit: 'km/h',
-        icon: Icons.speed,
-      ),
-      _MetricCardData(
-        title: 'Altitude',
-        value: _fmtDouble(t?.altitude, frac: 0),
-        unit: 'm',
-        icon: Icons.landscape,
-      ),
-      _MetricCardData(
-        title: 'Heading',
-        value: _fmtDouble(t?.bearing, frac: 0),
-        unit: '°',
-        icon: Icons.explore,
-      ),
-      _MetricCardData(
-        title: 'GPS Accuracy',
-        value: _fmtDouble(t?.accuracy, frac: 0),
-        unit: 'm',
-        icon: Icons.gps_fixed,
-      ),
-      _MetricCardData(
-        title: 'Latitude/Longitude',
-        value: (t == null) ? '--' : '${t.latitude.toStringAsFixed(5)}\n${t.longitude.toStringAsFixed(5)}',
-        unit: '',
-        icon: Icons.place,
+        'Latitude/Longitude',
+        (t == null)
+            ? '--'
+            : '${t.latitude.toStringAsFixed(5)}\n${t.longitude.toStringAsFixed(5)}',
+        '',
+        Icons.place,
       ),
     ];
 
@@ -73,11 +49,9 @@ class MetricsGrid extends StatelessWidget {
 }
 
 class _MetricCardData {
-  final String title;
-  final String value;
-  final String unit;
+  final String title, value, unit;
   final IconData icon;
-  _MetricCardData({required this.title, required this.value, required this.unit, required this.icon});
+  _MetricCardData(this.title, this.value, this.unit, this.icon);
 }
 
 class _MetricCard extends StatelessWidget {
@@ -116,7 +90,9 @@ class _MetricCard extends StatelessWidget {
             const Spacer(),
             Text(
               data.value.isEmpty ? '--' : '${data.value} ${data.unit}',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 4),
             Text(

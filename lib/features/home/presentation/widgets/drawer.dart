@@ -39,8 +39,12 @@ class AppDrawer extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Driver', style: theme.textTheme.titleMedium),
-                        Text('Online',
-                            style: theme.textTheme.bodySmall?.copyWith(color: Colors.green)),
+                        Text(
+                          'Online',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.green,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -63,7 +67,7 @@ class AppDrawer extends StatelessWidget {
               title: const Text('Sign out'),
               onTap: () async {
                 if (onSignOut != null) await onSignOut!();
-                if (context.mounted) Navigator.of(context).pop(); // close drawer
+                if (context.mounted) Navigator.of(context).pop();
               },
             ),
           ],

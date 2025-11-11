@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-
-import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
 import 'package:isd/features/home/presentation/widgets/map_view.dart';
+import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
 import 'package:isd/features/home/presentation/widgets/metrics_grid.dart';
 import 'package:isd/features/home/presentation/widgets/drawer.dart';
 import 'package:isd/features/home/presentation/widgets/about_us.dart';
 import 'package:isd/features/home/presentation/widgets/faq.dart';
 
-
+import 'dart:async';
 class HomeScreen extends StatefulWidget {
   final Future<void> Function()? onSignOut;
   const HomeScreen({super.key, this.onSignOut});
@@ -18,26 +17,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Important: in map_view.dart, expose public state `MapViewState` with recenter()
   final GlobalKey<MapViewState> _mapKey = GlobalKey<MapViewState>();
-
-  @override
-  void initState() {
-    super.initState();
-    // Start polling via TelemetryCubit
-    // context.read<TelemetryCubit>().start();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: AppDrawer(
-        onAbout: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AboutUsPage()),
-        ),
-        onFaq: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const FaqPage()),
-        ),
+        onAbout: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
+        onFaq: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const FaqPage())),
         onSignOut: widget.onSignOut,
       ),
       appBar: AppBar(
@@ -57,6 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
           final isWide = c.maxWidth >= 900;
           return BlocBuilder<TelemetryCubit, TelemetryState>(
             builder: (context, state) {
+              if (state.error != null && state.data == null) {
+                return Center(child: Text('Error: ${state.error}'));
+              }
+
               final map = MapView(key: _mapKey, telemetry: state.data);
               final metrics = MetricsGrid(telemetry: state.data);
 

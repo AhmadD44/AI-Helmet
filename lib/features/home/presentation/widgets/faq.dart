@@ -6,9 +6,16 @@ class FaqPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final faqs = <Map<String, String>>[
-      {'q': 'How do I start tracking?', 'a': 'Just open the Home screen; data streams from the API every 0.2s.'},
-      {'q': 'How is speed calculated?', 'a': 'It is provided by your backend (m/s), displayed as km/h.'},
+      {
+        'q': 'How do I start tracking?',
+        'a': 'Just open the app and allow location permissions.'
+      },
+      {
+        'q': 'What location source is used?',
+        'a': 'Your phone GPS directly, no Bluetooth / external device.'
+      },
     ];
+
     return Scaffold(
       appBar: AppBar(title: const Text('FAQ')),
       body: ListView.separated(
@@ -18,13 +25,21 @@ class FaqPage extends StatelessWidget {
         itemBuilder: (context, i) {
           return Material(
             elevation: 0,
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.35),
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceVariant
+                .withOpacity(0.35),
             borderRadius: BorderRadius.circular(14),
             child: ExpansionTile(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              collapsedShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               title: Text(faqs[i]['q']!),
-              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              childrenPadding:
+                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
               children: [Text(faqs[i]['a']!)],
             ),
           );

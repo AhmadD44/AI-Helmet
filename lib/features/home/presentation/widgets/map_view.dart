@@ -1,99 +1,92 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
-
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as latlng;
 
 class MapView extends StatefulWidget {
   final Telemetry? telemetry;
-
   const MapView({super.key, required this.telemetry});
 
   @override
   MapViewState createState() => MapViewState();
-  
 }
 
 class MapViewState extends State<MapView> {
-  final Completer<GoogleMapController> _controller = Completer();
+  final MapController _mapController = MapController();
   bool _centeredOnce = false;
 
-  static const _fallback = CameraPosition(
-    target: LatLng(33.8938, 35.5018), // Beirut
-    zoom: 14.5,
-  );
+  static final latlng.LatLng _fallbackCenter =
+      latlng.LatLng(33.8938, 35.5018);
 
   @override
   Widget build(BuildContext context) {
     final t = widget.telemetry;
-    final LatLng? me = (t == null) ? null : LatLng(t.latitude, t.longitude);
+    final latlng.LatLng? me =
+        (t == null) ? null : latlng.LatLng(t.latitude, t.longitude);
 
-    final markers = me == null
-        ? <Marker>{}
-        : {
-            Marker(
-              markerId: const MarkerId('me'),
-              position: me,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+    final markers = <Marker>[
+      if (me != null)
+        Marker(
+          point: me,
+          width: 40,
+          height: 40,
+          // ✅ in flutter_map 7+, use `child:` instead of `builder:`
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF00D1FF),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-          };
-
-    final circles = (me == null || (t?.accuracy ?? 0) <= 0)
-        ? <Circle>{}
-        : {
-            Circle(
-              circleId: const CircleId('acc'),
-              center: me,
-              radius: t!.accuracy!,
-              fillColor: Colors.blue.withOpacity(0.15),
-              strokeWidth: 0,
+            child: const Icon(
+              Icons.pedal_bike,
+              color: Colors.white,
+              size: 22,
             ),
-          };
+          ),
+        ),
+    ];
 
-    _maybeCenter(me, t?.bearing);
+    _maybeCenter(me);
 
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-      child: GoogleMap(
-        initialCameraPosition: _fallback,
-        onMapCreated: (c) => _controller.complete(c),
-        myLocationEnabled: false,
-        myLocationButtonEnabled: false,
-        zoomControlsEnabled: false,
-        compassEnabled: true,
-        markers: markers,
-        circles: circles,
-        mapToolbarEnabled: false,
+      borderRadius:
+          const BorderRadius.vertical(bottom: Radius.circular(24)),
+      child: FlutterMap(
+        mapController: _mapController,
+        options: MapOptions(
+          initialCenter: _fallbackCenter,
+          initialZoom: 14.5,
+          minZoom: 3,
+          maxZoom: 19,
+          keepAlive: true,
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.example.isd',
+          ),
+          MarkerLayer(markers: markers),
+        ],
       ),
     );
   }
 
-  Future<void> _maybeCenter(LatLng? me, double? bearing) async {
-    if (me == null) return;
-    final controller = await _controller.future;
-    if (!_centeredOnce) {
-      _centeredOnce = true;
-      await controller.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: me, zoom: 16, bearing: bearing ?? 0),
-        ),
-      );
-    }
+  void _maybeCenter(latlng.LatLng? me) {
+    if (me == null || _centeredOnce) return;
+    _centeredOnce = true;
+    _mapController.move(me, 16);
   }
 
-  Future<void> recenter() async {
+  void recenter() {
     final t = widget.telemetry;
     if (t == null) return;
-    final controller = await _controller.future;
-    await controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: LatLng(t.latitude, t.longitude),
-          zoom: 17,
-          bearing: t.bearing ?? 0,
-          tilt: 40,
-        ),
-      ),
-    );
+    final me = latlng.LatLng(t.latitude, t.longitude);
+    _mapController.move(me, 17);
   }
 }
