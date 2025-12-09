@@ -16,11 +16,36 @@ class MetricsGrid extends StatelessWidget {
     final speedKmh = (t?.speedMps ?? 0) * 3.6;
 
     final items = <_MetricCardData>[
-      _MetricCardData('Heart Rate', (t?.heartRate?.toString() ?? '--'), 'bpm', Icons.favorite),
-      _MetricCardData('Speed', _fmtDouble(speedKmh, frac: 1), 'km/h', Icons.speed),
-      _MetricCardData('Altitude', _fmtDouble(t?.altitude, frac: 0), 'm', Icons.landscape),
-      _MetricCardData('Heading', _fmtDouble(t?.bearing, frac: 0), '°', Icons.explore),
-      _MetricCardData('GPS Accuracy', _fmtDouble(t?.accuracy, frac: 0), 'm', Icons.gps_fixed),
+      _MetricCardData(
+        'Heart Rate',
+        (t?.heartRate?.toString() ?? '--'),
+        'bpm',
+        Icons.favorite,
+      ),
+      _MetricCardData(
+        'Speed',
+        _fmtDouble(speedKmh, frac: 1),
+        'km/h',
+        Icons.speed,
+      ),
+      _MetricCardData(
+        'Altitude',
+        _fmtDouble(t?.altitude, frac: 0),
+        'm',
+        Icons.landscape,
+      ),
+      _MetricCardData(
+        'Heading',
+        _fmtDouble(t?.bearing, frac: 0),
+        '°',
+        Icons.explore,
+      ),
+      _MetricCardData(
+        'GPS Accuracy',
+        _fmtDouble(t?.accuracy, frac: 0),
+        'm',
+        Icons.gps_fixed,
+      ),
       _MetricCardData(
         'Latitude/Longitude',
         (t == null)
@@ -78,7 +103,7 @@ class _MetricCard extends StatelessWidget {
             spreadRadius: -6,
             color: Colors.black.withOpacity(0.08),
             offset: const Offset(0, 8),
-          )
+          ),
         ],
       ),
       child: Padding(

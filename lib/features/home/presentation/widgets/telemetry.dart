@@ -20,6 +20,13 @@ class Telemetry extends Equatable {
   });
 
   @override
-  List<Object?> get props =>
-      [latitude, longitude, speedMps, bearing, altitude, accuracy, heartRate];
+  List<Object?> get props => [
+    latitude,
+    longitude,
+    speedMps,
+    bearing,
+    altitude,
+    accuracy,
+    heartRate,
+  ];
 }

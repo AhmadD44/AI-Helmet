@@ -4,11 +4,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:isd/features/auth/data/auth.dart';
 import 'package:isd/features/auth/presentation/view_model/login/login_state.dart';
 
-
-class LoginCubit extends Cubit<LoginState>{
+class LoginCubit extends Cubit<LoginState> {
   LoginCubit() : super(LoginInitial());
 
-  Future<void> loginUser({required String email, required String password, required context}) async{
+  Future<void> loginUser({
+    required String email,
+    required String password,
+    required context,
+  }) async {
     emit(LoginLoading());
     try {
       final userCredential = await Auth().auth.signInWithEmailAndPassword(
@@ -20,10 +23,30 @@ class LoginCubit extends Cubit<LoginState>{
 
       if (user != null && !user.emailVerified) {
         await Auth().auth.signOut(); // Optional: Sign them out immediately
-        Auth().showErrorSnackBar(context, "Please verify your email before signing in.");
+        Auth().showErrorSnackBar(
+          context,
+          "Please verify your email before signing in.",
+        );
         emit(LoginFailure());
         return;
       }
+
+          final userForJwt = FirebaseAuth.instance.currentUser;
+          final idToken = await userForJwt?.getIdToken();
+          print('Tokennn: $idToken');
+      //     final response = await http.post(
+      //   Uri.parse('https://your-backend.com/api/some-endpoint'),
+      //   headers: {
+      //     'Authorization': 'Bearer $idToken',
+      //     'Content-Type': 'application/json',
+      //   },
+      //   body: jsonEncode({
+      //     "someData": "value",
+      //   }),
+      // );
+
+      // print('status: ${response.statusCode}');
+      // print('body: ${response.body}');
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

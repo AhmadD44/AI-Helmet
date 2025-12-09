@@ -66,8 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final current = latlng.LatLng(t.latitude, t.longitude);
     final dest = _destination!;
 
-    final double meters =
-        _distance(current, dest); // distance in meters
+    final double meters = _distance(current, dest); // distance in meters
 
     // Arrival detection
     if (meters < 25 && !_tripCompleted) {
@@ -107,7 +106,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final dLon = lon2 - lon1;
     final y = Math.sin(dLon) * Math.cos(lat2);
-    final x = Math.cos(lat1) * Math.sin(lat2) -
+    final x =
+        Math.cos(lat1) * Math.sin(lat2) -
         Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     final brng = Math.atan2(y, x);
     return (_radToDeg(brng) + 360) % 360;
@@ -128,10 +128,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: AppDrawer(
-        onAbout: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
-        onFaq: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const FaqPage())),
+        onAbout: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
+        onFaq: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const FaqPage())),
         onSignOut: widget.onSignOut,
       ),
       appBar: AppBar(
@@ -204,8 +206,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ? null
           : SafeArea(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF111827),
                   boxShadow: [
@@ -213,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.black.withOpacity(0.35),
                       blurRadius: 16,
                       offset: const Offset(0, -6),
-                    )
+                    ),
                   ],
                 ),
                 child: Row(
@@ -227,20 +231,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             _tripCompleted
                                 ? 'Trip completed'
                                 : (_tripStarted
-                                    ? 'Navigation running'
-                                    : 'Destination selected'),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
+                                      ? 'Navigation running'
+                                      : 'Destination selected'),
+                            style: Theme.of(context).textTheme.labelLarge
                                 ?.copyWith(color: Colors.white),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '${_destination!.latitude.toStringAsFixed(5)}, '
                             '${_destination!.longitude.toStringAsFixed(5)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: Colors.white70),
                           ),
                         ],
@@ -277,7 +277,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
+                          horizontal: 18,
+                          vertical: 10,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(999),
                         ),

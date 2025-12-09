@@ -8,11 +8,11 @@ class FaqPage extends StatelessWidget {
     final faqs = <Map<String, String>>[
       {
         'q': 'How do I start tracking?',
-        'a': 'Just open the app and allow location permissions.'
+        'a': 'Just open the app and allow location permissions.',
       },
       {
         'q': 'What location source is used?',
-        'a': 'Your phone GPS directly, no Bluetooth / external device.'
+        'a': 'Your phone GPS directly, no Bluetooth / external device.',
       },
     ];
 
@@ -25,10 +25,9 @@ class FaqPage extends StatelessWidget {
         itemBuilder: (context, i) {
           return Material(
             elevation: 0,
-            color: Theme.of(context)
-                .colorScheme
-                .surfaceVariant
-                .withOpacity(0.35),
+            color: Theme.of(
+              context,
+            ).colorScheme.surfaceVariant.withOpacity(0.35),
             borderRadius: BorderRadius.circular(14),
             child: ExpansionTile(
               shape: RoundedRectangleBorder(
@@ -38,8 +37,7 @@ class FaqPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               title: Text(faqs[i]['q']!),
-              childrenPadding:
-                  const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               children: [Text(faqs[i]['a']!)],
             ),
           );

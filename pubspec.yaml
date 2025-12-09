@@ -47,6 +47,8 @@ dependencies:
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   flutter_tts: ^4.2.3
+  dio: ^5.9.0
+  dartz: ^0.10.1
 
 dev_dependencies:
   flutter_test:

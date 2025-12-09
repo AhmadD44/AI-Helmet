@@ -9,17 +9,9 @@ class TelemetryState extends Equatable {
   final String? error;
   final Telemetry? data;
 
-  const TelemetryState({
-    this.loading = true,
-    this.error,
-    this.data,
-  });
+  const TelemetryState({this.loading = true, this.error, this.data});
 
-  TelemetryState copyWith({
-    bool? loading,
-    String? error,
-    Telemetry? data,
-  }) {
+  TelemetryState copyWith({bool? loading, String? error, Telemetry? data}) {
     return TelemetryState(
       loading: loading ?? this.loading,
       error: error,
@@ -47,10 +39,12 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     if (!serviceEnabled) {
       serviceEnabled = await _location.requestService();
       if (!serviceEnabled) {
-        emit(const TelemetryState(
-          loading: false,
-          error: 'Location service is disabled',
-        ));
+        emit(
+          const TelemetryState(
+            loading: false,
+            error: 'Location service is disabled',
+          ),
+        );
         return;
       }
     }
@@ -61,10 +55,12 @@ class TelemetryCubit extends Cubit<TelemetryState> {
       permissionGranted = await _location.requestPermission();
       if (permissionGranted != PermissionStatus.granted &&
           permissionGranted != PermissionStatus.grantedLimited) {
-        emit(const TelemetryState(
-          loading: false,
-          error: 'Location permission denied',
-        ));
+        emit(
+          const TelemetryState(
+            loading: false,
+            error: 'Location permission denied',
+          ),
+        );
         return;
       }
     }
@@ -88,11 +84,9 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     _sub = _location.onLocationChanged.listen(
       (data) => _emitFrom(data),
       onError: (e) {
-        emit(TelemetryState(
-          loading: false,
-          error: e.toString(),
-          data: state.data,
-        ));
+        emit(
+          TelemetryState(loading: false, error: e.toString(), data: state.data),
+        );
       },
     );
   }
@@ -110,11 +104,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
       heartRate: null,
     );
 
-    emit(TelemetryState(
-      loading: false,
-      data: telemetry,
-      error: null,
-    ));
+    emit(TelemetryState(loading: false, data: telemetry, error: null));
   }
 
   @override

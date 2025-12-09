@@ -28,8 +28,10 @@ class MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
   bool _centeredOnce = false;
 
-  static final latlng.LatLng _fallbackCenter =
-      latlng.LatLng(33.8938, 35.5018); // Beirut
+  static final latlng.LatLng _fallbackCenter = latlng.LatLng(
+    33.8938,
+    35.5018,
+  ); // Beirut
 
   // 🟦 Road route points returned from OSRM
   List<latlng.LatLng> _routePoints = [];
@@ -46,8 +48,9 @@ class MapViewState extends State<MapView> {
   @override
   Widget build(BuildContext context) {
     final t = widget.telemetry;
-    final latlng.LatLng? me =
-        (t == null) ? null : latlng.LatLng(t.latitude, t.longitude);
+    final latlng.LatLng? me = (t == null)
+        ? null
+        : latlng.LatLng(t.latitude, t.longitude);
 
     // 🔵 driver + 🔴 destination markers
     final markers = <Marker>[
@@ -68,11 +71,7 @@ class MapViewState extends State<MapView> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.pedal_bike,
-              color: Colors.white,
-              size: 22,
-            ),
+            child: const Icon(Icons.pedal_bike, color: Colors.white, size: 22),
           ),
         ),
       if (widget.destination != null)
@@ -92,11 +91,7 @@ class MapViewState extends State<MapView> {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.flag,
-              color: Colors.white,
-              size: 20,
-            ),
+            child: const Icon(Icons.flag, color: Colors.white, size: 20),
           ),
         ),
     ];
@@ -142,12 +137,10 @@ class MapViewState extends State<MapView> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.isd',
               ),
-              if (polylines.isNotEmpty)
-                PolylineLayer(polylines: polylines),
+              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),
             ],
           ),
@@ -159,8 +152,7 @@ class MapViewState extends State<MapView> {
             left: 16,
             bottom: 16,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.55),
                 borderRadius: BorderRadius.circular(999),
@@ -172,10 +164,7 @@ class MapViewState extends State<MapView> {
                   SizedBox(width: 6),
                   Text(
                     'Tap on map to select destination',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white70,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
                   ),
                 ],
               ),
@@ -206,8 +195,7 @@ class MapViewState extends State<MapView> {
     _fetchRoute(from, to);
   }
 
-  Future<void> _fetchRoute(
-      latlng.LatLng from, latlng.LatLng to) async {
+  Future<void> _fetchRoute(latlng.LatLng from, latlng.LatLng to) async {
     if (_fetchingRoute) return;
     _fetchingRoute = true;
 
@@ -230,8 +218,12 @@ class MapViewState extends State<MapView> {
           final coords = geometry['coordinates'] as List<dynamic>;
 
           final points = coords
-              .map((c) =>
-                  latlng.LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+              .map(
+                (c) => latlng.LatLng(
+                  (c[1] as num).toDouble(),
+                  (c[0] as num).toDouble(),
+                ),
+              )
               .toList();
 
           if (mounted) {
