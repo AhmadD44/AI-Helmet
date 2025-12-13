@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:isd/features/auth/presentation/view/signin.dart';
 import 'package:isd/features/auth/presentation/view_model/login/login_cubit.dart';
 import 'package:isd/features/auth/presentation/view_model/signup/signup_cubit.dart';
+import 'package:isd/features/home/data/backend_stream_client.dart';
 import 'package:isd/firebase_options.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
-import 'package:isd/features/home/presentation/home_Screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,9 +24,10 @@ class AIHelmetApp extends StatelessWidget {
       providers: [
         BlocProvider<LoginCubit>(create: (context) => LoginCubit()),
         BlocProvider<SignupCubit>(create: (context) => SignupCubit()),
-        BlocProvider<TelemetryCubit>(
-          create: (_) => TelemetryCubit()..start(), // ✅ starts GPS here
-          child: MaterialApp(home: const HomeScreen()),
+        BlocProvider(
+          create: (_) => TelemetryCubit(
+            streamClient: BackendStreamClient(),
+          ),
         ),
       ],
       child: MaterialApp(

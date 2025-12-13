@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:isd/features/home/data/backend_stream_client.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
-import 'package:location/location.dart';
 
 class TelemetryState extends Equatable {
   final bool loading;
@@ -11,105 +13,86 @@ class TelemetryState extends Equatable {
 
   const TelemetryState({this.loading = true, this.error, this.data});
 
-  TelemetryState copyWith({bool? loading, String? error, Telemetry? data}) {
-    return TelemetryState(
-      loading: loading ?? this.loading,
-      error: error,
-      data: data ?? this.data,
-    );
-  }
-
   @override
   List<Object?> get props => [loading, error, data];
 }
 
 class TelemetryCubit extends Cubit<TelemetryState> {
-  TelemetryCubit() : super(const TelemetryState(loading: true));
+  final BackendStreamClient streamClient;
 
-  final Location _location = Location();
-  StreamSubscription<LocationData>? _sub;
+  WebSocketChannel? _ch;
+  StreamSubscription? _sub;
   bool _started = false;
+
+  TelemetryCubit({required this.streamClient})
+      : super(const TelemetryState(loading: true));
 
   Future<void> start() async {
     if (_started) return;
     _started = true;
 
-    // 1) Check service
-    bool serviceEnabled = await _location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await _location.requestService();
-      if (!serviceEnabled) {
-        emit(
-          const TelemetryState(
-            loading: false,
-            error: 'Location service is disabled',
-          ),
-        );
-        return;
-      }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      emit(const TelemetryState(loading: false, error: 'Not logged in'));
+      return;
     }
 
-    // 2) Check permission
-    PermissionStatus permissionGranted = await _location.hasPermission();
-    if (permissionGranted == PermissionStatus.denied) {
-      permissionGranted = await _location.requestPermission();
-      if (permissionGranted != PermissionStatus.granted &&
-          permissionGranted != PermissionStatus.grantedLimited) {
-        emit(
-          const TelemetryState(
-            loading: false,
-            error: 'Location permission denied',
-          ),
-        );
-        return;
-      }
-    }
+    final String? token = await user.getIdToken();
+    print('.');
+    print('.');
+    print('.');
+    print('token: $token');
+    print('.');
+    print('.');
+    print('.');
 
-    // 3) Configure updates
-    await _location.changeSettings(
-      accuracy: LocationAccuracy.high,
-      interval: 200, // ms
-      distanceFilter: 0,
-    );
-
-    // 4) Try initial fix (non-fatal)
     try {
-      final first = await _location.getLocation();
-      _emitFrom(first);
-    } catch (_) {
-      // ignore; rely on onLocationChanged
+      _ch = streamClient.connect(token: token!);
+
+      _sub = _ch!.stream.listen(
+        (msg) {
+          try {
+            final payload = BackendStreamClient.decode(msg);
+
+            if (payload['type'] != 'telemetry') return;
+
+            final gps = payload['gps'] as Map<String, dynamic>? ?? {};
+            final hr = payload['heart_rate'] as Map<String, dynamic>? ?? {};
+            final imu = payload['imu'] as Map<String, dynamic>? ?? {};
+
+            final t = Telemetry(
+              latitude: ((gps['lat'] as num?)?.toDouble()) ?? 33.8938,
+              longitude: ((gps['lng'] as num?)?.toDouble()) ?? 35.5018,
+              heartRate: (hr['hr'] as num?)?.toInt(),
+              crashFlag: payload['crash_flag'] as bool?,
+              ax: (imu['ax'] as num?)?.toDouble(),
+              ay: (imu['ay'] as num?)?.toDouble(),
+              az: (imu['az'] as num?)?.toDouble(),
+              ts: payload['ts'] as String?,
+            );
+
+            emit(TelemetryState(loading: false, data: t));
+          } catch (e) {
+            emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
+          }
+        },
+        onError: (e) {
+          emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
+        },
+        onDone: () {
+          // don't crash; show disconnected state
+          emit(TelemetryState(loading: false, error: 'Stream disconnected', data: state.data));
+        },
+      );
+    } catch (e) {
+      emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
     }
-
-    // 5) Subscribe
-    _sub = _location.onLocationChanged.listen(
-      (data) => _emitFrom(data),
-      onError: (e) {
-        emit(
-          TelemetryState(loading: false, error: e.toString(), data: state.data),
-        );
-      },
-    );
-  }
-
-  void _emitFrom(LocationData d) {
-    if (d.latitude == null || d.longitude == null) return;
-
-    final telemetry = Telemetry(
-      latitude: d.latitude!,
-      longitude: d.longitude!,
-      speedMps: d.speed,
-      bearing: d.heading,
-      altitude: d.altitude,
-      accuracy: d.accuracy,
-      heartRate: null,
-    );
-
-    emit(TelemetryState(loading: false, data: telemetry, error: null));
   }
 
   @override
-  Future<void> close() {
-    _sub?.cancel();
+  Future<void> close() async {
+    await _sub?.cancel();
+    await _ch?.sink.close();
     return super.close();
   }
 }

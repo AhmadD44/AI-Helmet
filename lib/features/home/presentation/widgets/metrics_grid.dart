@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 
@@ -5,129 +6,136 @@ class MetricsGrid extends StatelessWidget {
   final Telemetry? telemetry;
   const MetricsGrid({super.key, required this.telemetry});
 
-  String _fmtDouble(double? v, {int frac = 1, String fallback = '--'}) {
-    if (v == null) return fallback;
-    return v.toStringAsFixed(frac);
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = telemetry;
-    final speedKmh = (t?.speedMps ?? 0) * 3.6;
 
-    final items = <_MetricCardData>[
-      _MetricCardData(
-        'Heart Rate',
-        (t?.heartRate?.toString() ?? '--'),
-        'bpm',
-        Icons.favorite,
-      ),
-      _MetricCardData(
-        'Speed',
-        _fmtDouble(speedKmh, frac: 1),
-        'km/h',
-        Icons.speed,
-      ),
-      _MetricCardData(
-        'Altitude',
-        _fmtDouble(t?.altitude, frac: 0),
-        'm',
-        Icons.landscape,
-      ),
-      _MetricCardData(
-        'Heading',
-        _fmtDouble(t?.bearing, frac: 0),
-        '°',
-        Icons.explore,
-      ),
-      _MetricCardData(
-        'GPS Accuracy',
-        _fmtDouble(t?.accuracy, frac: 0),
-        'm',
-        Icons.gps_fixed,
-      ),
-      _MetricCardData(
-        'Latitude/Longitude',
-        (t == null)
-            ? '--'
-            : '${t.latitude.toStringAsFixed(5)}\n${t.longitude.toStringAsFixed(5)}',
-        '',
-        Icons.place,
-      ),
-    ];
+    final hr = t?.heartRate;
+    final crash = t?.crashFlag;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: GridView.builder(
-        physics: const BouncingScrollPhysics(),
-        itemCount: items.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.2,
-        ),
-        itemBuilder: (context, i) => _MetricCard(data: items[i]),
+    final lat = t?.latitude;
+    final lng = t?.longitude;
+
+    final gForce = _computeGForce(t);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: GridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.25,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          _MetricCard(
+            title: 'Heart Rate',
+            value: hr == null ? '--' : '$hr',
+            unit: 'BPM',
+            icon: Icons.favorite,
+          ),
+          _MetricCard(
+            title: 'Crash Status',
+            value: crash == null ? '--' : (crash ? 'CRASH' : 'SAFE'),
+            unit: '',
+            icon: crash == true ? Icons.warning_amber_rounded : Icons.verified,
+            emphasis: crash == true,
+          ),
+          _MetricCard(
+            title: 'GPS Location',
+            value: (lat == null || lng == null)
+                ? '--'
+                : '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+            unit: '',
+            icon: Icons.location_on,
+          ),
+          _MetricCard(
+            title: 'G-Force',
+            value: gForce == null ? '--' : gForce.toStringAsFixed(2),
+            unit: 'g',
+            icon: Icons.speed,
+          ),
+        ],
       ),
     );
   }
-}
 
-class _MetricCardData {
-  final String title, value, unit;
-  final IconData icon;
-  _MetricCardData(this.title, this.value, this.unit, this.icon);
+  double? _computeGForce(Telemetry? t) {
+    final ax = t?.ax, ay = t?.ay, az = t?.az;
+    if (ax == null || ay == null || az == null) return null;
+
+    final magnitude = math.sqrt(ax * ax + ay * ay + az * az); // m/s^2
+    return magnitude / 9.80665; // convert to g
+  }
 }
 
 class _MetricCard extends StatelessWidget {
-  final _MetricCardData data;
-  const _MetricCard({required this.data});
+  final String title;
+  final String value;
+  final String unit;
+  final IconData icon;
+  final bool emphasis;
+
+  const _MetricCard({
+    required this.title,
+    required this.value,
+    required this.unit,
+    required this.icon,
+    this.emphasis = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bg = const Color(0xFF101A2E);
+    final border = emphasis ? const Color(0xFFFF3B30) : const Color(0x1FFFFFFF);
+
     return Container(
       decoration: BoxDecoration(
+        color: bg,
         borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            theme.colorScheme.primary.withOpacity(0.12),
-            theme.colorScheme.secondary.withOpacity(0.08),
-          ],
-        ),
+        border: Border.all(color: border, width: emphasis ? 1.5 : 1),
         boxShadow: [
           BoxShadow(
-            blurRadius: 16,
-            spreadRadius: -6,
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 14,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(data.icon, size: 24),
-            const Spacer(),
-            Text(
-              data.value.isEmpty ? '--' : '${data.value} ${data.unit}',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: theme.colorScheme.secondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: emphasis ? const Color(0xFFFF3B30) : Colors.white,
             ),
-            const SizedBox(height: 4),
+          ),
+          if (unit.isNotEmpty)
             Text(
-              data.title,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-              ),
+              unit,
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

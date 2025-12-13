@@ -31,9 +31,9 @@ class LoginCubit extends Cubit<LoginState> {
         return;
       }
 
-          final userForJwt = FirebaseAuth.instance.currentUser;
-          final idToken = await userForJwt?.getIdToken();
-          print('Tokennn: $idToken');
+          // final userForJwt = FirebaseAuth.instance.currentUser;
+          // final idToken = await userForJwt?.getIdToken();
+          // print('Tokennn: $idToken');
       //     final response = await http.post(
       //   Uri.parse('https://your-backend.com/api/some-endpoint'),
       //   headers: {

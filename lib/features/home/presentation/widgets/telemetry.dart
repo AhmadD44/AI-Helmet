@@ -1,32 +1,25 @@
-import 'package:equatable/equatable.dart';
-
-class Telemetry extends Equatable {
+class Telemetry {
   final double latitude;
   final double longitude;
-  final double? speedMps;
-  final double? bearing;
-  final double? altitude;
-  final double? accuracy;
-  final int? heartRate;
+
+  final int? heartRate;     // BPM
+  final bool? crashFlag;    // true/false
+
+  // acceleration from IMU (your mock shows az around 9.7 => m/s^2)
+  final double? ax;
+  final double? ay;
+  final double? az;
+
+  final String? ts;
 
   const Telemetry({
     required this.latitude,
     required this.longitude,
-    this.speedMps,
-    this.bearing,
-    this.altitude,
-    this.accuracy,
     this.heartRate,
+    this.crashFlag,
+    this.ax,
+    this.ay,
+    this.az,
+    this.ts,
   });
-
-  @override
-  List<Object?> get props => [
-    latitude,
-    longitude,
-    speedMps,
-    bearing,
-    altitude,
-    accuracy,
-    heartRate,
-  ];
 }
