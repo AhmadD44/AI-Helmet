@@ -2,6 +2,10 @@ import 'dart:math' as Math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:isd/core/utils/esp_prefs.dart';
+import 'package:isd/features/home/presentation/allTrips/my_trips.dart';
+import 'package:isd/features/home/presentation/connect_esp_page.dart';
+import 'package:isd/features/home/presentation/select_esp_device_page.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 
 import 'package:isd/features/home/presentation/widgets/about_us.dart';
@@ -43,10 +47,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _tts = FlutterTts();
     _tts.setLanguage("en-US");
     _tts.setSpeechRate(0.9);
-
+    _initEspAndStart();
     // Start receiving telemetry (stream)
-    context.read<TelemetryCubit>().start();
+    // context.read<TelemetryCubit>().start();
   }
+  
+Future<void> _initEspAndStart() async {
+  String? mac = await EspPrefs.loadMac();
+
+  if (mac == null) {
+    mac = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const SelectEspDevicePage()),
+    );
+
+    if (mac == null) return; // user cancelled
+    await EspPrefs.saveMac(mac);
+  }
+
+  if (!mounted) return;
+  context.read<TelemetryCubit>().startWithMac(mac);
+}
+
+
+
 
   @override
   void dispose() {
@@ -55,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _speak(String text) async {
+    if (!mounted) return;
     final now = DateTime.now();
 
     // avoid spamming same message
@@ -68,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _lastHint = text;
 
     await _tts.stop();
+    if (!mounted) return; 
     await _tts.speak(text);
   }
 
@@ -86,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Arrival detection
     if (meters < 25 && !_tripCompleted) {
+      if (!mounted) return;
       setState(() {
         _tripStarted = false;
         _tripCompleted = true;
@@ -210,6 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: AppDrawer(
+        onMyTrips: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const MyTripsPage())),
         onAbout: () => Navigator.of(context)
             .push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
         onFaq: () => Navigator.of(context)
@@ -285,8 +313,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
                 return Column(
                   children: [
-                    Expanded(flex: 5, child: map),
-                    Expanded(flex: 5, child: metrics),
+                    Expanded(flex: 9, child: map),
+                    Expanded(flex: 11, child: metrics),
                   ],
                 );
               },
@@ -394,6 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final meters = _distance(current, dest);
 
     if (meters < 25 && !_tripCompleted) {
+      if (!mounted) return;
       setState(() {
         _tripStarted = false;
         _tripCompleted = true;

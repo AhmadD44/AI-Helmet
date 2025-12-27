@@ -1,11 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:isd/features/auth/presentation/view/signin.dart';
 
 class AppDrawer extends StatelessWidget {
+  final VoidCallback? onMyTrips;
   final VoidCallback? onAbout;
   final VoidCallback? onFaq;
   final Future<void> Function()? onSignOut;
 
-  const AppDrawer({super.key, this.onAbout, this.onFaq, this.onSignOut});
+  const AppDrawer({
+    super.key,
+    this.onMyTrips,
+    this.onAbout,
+    this.onFaq,
+    this.onSignOut,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +61,11 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
             ListTile(
+              leading: const Icon(Icons.motorcycle_sharp),
+              title: const Text('My Trips'),
+              onTap: onMyTrips,
+            ),
+            ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text('About Us'),
               onTap: onAbout,
@@ -66,8 +80,16 @@ class AppDrawer extends StatelessWidget {
               leading: const Icon(Icons.logout),
               title: const Text('Sign out'),
               onTap: () async {
-                if (onSignOut != null) await onSignOut!();
-                if (context.mounted) Navigator.of(context).pop();
+                await FirebaseAuth.instance.signOut();
+
+                // Close drawer
+                Navigator.of(context).pop();
+
+                // Navigate to login screen
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SignInScreen()),
+                );
               },
             ),
           ],

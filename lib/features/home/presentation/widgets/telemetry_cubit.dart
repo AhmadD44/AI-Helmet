@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:isd/features/home/data/backend_stream_client.dart';
+import 'package:isd/features/home/data/esp_classic_bt_msgpack_source.dart';
+import 'package:isd/features/home/data/ingest_ws_client.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
+import 'package:isd/features/home/data/telemetry_from_msgpack.dart';
 
 class TelemetryState extends Equatable {
   final bool loading;
@@ -18,81 +18,52 @@ class TelemetryState extends Equatable {
 }
 
 class TelemetryCubit extends Cubit<TelemetryState> {
-  final BackendStreamClient streamClient;
+  final EspBtClassicSource source;
+  final IngestWsClient ingest;
 
-  WebSocketChannel? _ch;
-  StreamSubscription? _sub;
+  StreamSubscription<Map<String, dynamic>>? _sub;
   bool _started = false;
 
-  TelemetryCubit({required this.streamClient})
+  TelemetryCubit({required this.source, required this.ingest})
       : super(const TelemetryState(loading: true));
 
-  Future<void> start() async {
+  Future<void> startWithMac(String mac) async {
     if (_started) return;
     _started = true;
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      emit(const TelemetryState(loading: false, error: 'Not logged in'));
+    emit(const TelemetryState(loading: true));
+
+    try {
+      await ingest.connect();
+    } catch (_) {}
+
+    try {
+      await source.initPermissions();
+      await source.connect(mac);
+    } catch (e) {
+      emit(TelemetryState(loading: false, error: 'BT connect failed: $e'));
       return;
     }
 
-    final String? token = await user.getIdToken();
-    print('.');
-    print('.');
-    print('.');
-    print('token: $token');
-    print('.');
-    print('.');
-    print('.');
+    _sub = source.stream.listen((payload) async {
+      // forward to backend ingest (best effort)
+      try {
+        await ingest.send(payload);
+      } catch (_) {}
 
-    try {
-      _ch = streamClient.connect(token: token!);
-
-      _sub = _ch!.stream.listen(
-        (msg) {
-          try {
-            final payload = BackendStreamClient.decode(msg);
-
-            if (payload['type'] != 'telemetry') return;
-
-            final gps = payload['gps'] as Map<String, dynamic>? ?? {};
-            final hr = payload['heart_rate'] as Map<String, dynamic>? ?? {};
-            final imu = payload['imu'] as Map<String, dynamic>? ?? {};
-
-            final t = Telemetry(
-              latitude: ((gps['lat'] as num?)?.toDouble()) ?? 33.8938,
-              longitude: ((gps['lng'] as num?)?.toDouble()) ?? 35.5018,
-              heartRate: (hr['hr'] as num?)?.toInt(),
-              crashFlag: payload['crash_flag'] as bool?,
-              ax: (imu['ax'] as num?)?.toDouble(),
-              ay: (imu['ay'] as num?)?.toDouble(),
-              az: (imu['az'] as num?)?.toDouble(),
-              ts: payload['ts'] as String?,
-            );
-
-            emit(TelemetryState(loading: false, data: t));
-          } catch (e) {
-            emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
-          }
-        },
-        onError: (e) {
-          emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
-        },
-        onDone: () {
-          // don't crash; show disconnected state
-          emit(TelemetryState(loading: false, error: 'Stream disconnected', data: state.data));
-        },
-      );
-    } catch (e) {
+      // update UI telemetry
+      final t = telemetryFromMsgpack(payload);
+      if (t != null) emit(TelemetryState(loading: false, data: t));
+    }, onError: (e) {
       emit(TelemetryState(loading: false, error: e.toString(), data: state.data));
-    }
+    });
   }
 
   @override
   Future<void> close() async {
     await _sub?.cancel();
-    await _ch?.sink.close();
+    await source.dispose();
+    await ingest.close();
     return super.close();
   }
 }

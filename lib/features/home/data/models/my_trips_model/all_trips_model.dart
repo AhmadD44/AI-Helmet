@@ -1,13 +1,13 @@
-class MyTripsModel {
+class AllTripsModel {
   String? tripId;
   String? deviceId;
   DateTime? startTime;
   DateTime? endTime;
-  int? totalDistance;
-  int? averageSpeed;
+  double? totalDistance;
+  double? averageSpeed;
   String? status;
 
-  MyTripsModel({
+  AllTripsModel({
     this.tripId,
     this.deviceId,
     this.startTime,
@@ -17,7 +17,7 @@ class MyTripsModel {
     this.status,
   });
 
-  factory MyTripsModel.fromJson(Map<String, dynamic> json) => MyTripsModel(
+  factory AllTripsModel.fromJson(Map<String, dynamic> json) => AllTripsModel(
     tripId: json['trip_id'] as String?,
     deviceId: json['device_id'] as String?,
     startTime: json['start_time'] == null
@@ -26,8 +26,8 @@ class MyTripsModel {
     endTime: json['end_time'] == null
         ? null
         : DateTime.parse(json['end_time'] as String),
-    totalDistance: json['total_distance'] as int?,
-    averageSpeed: json['average_speed'] as int?,
+    totalDistance: json['total_distance'] as double?,
+    averageSpeed: json['average_speed'] as double?,
     status: json['status'] as String?,
   );
 

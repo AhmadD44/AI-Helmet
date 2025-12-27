@@ -32,11 +32,11 @@ class TelemetryForwarder {
       latitude: ((gps['lat'] as num?)?.toDouble()) ?? 33.8938,
       longitude: ((gps['lng'] as num?)?.toDouble()) ?? 35.5018,
       heartRate: (hr['hr'] as num?)?.toInt(),
-      crashFlag: payload['crash_flag'] as bool?,
+      crashFlag: payload['crash_flag'],
       ax: (imu['ax'] as num?)?.toDouble(),
       ay: (imu['ay'] as num?)?.toDouble(),
       az: (imu['az'] as num?)?.toDouble(),
-      ts: payload['ts'] as String?,
+      // ts: payload['ts'] as String?,
     );
   }
 }
