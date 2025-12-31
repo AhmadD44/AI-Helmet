@@ -11,8 +11,9 @@ class TelemetryState extends Equatable {
   final String? error;
   final Telemetry? data;
   final bool connected;
-  final bool wsConnected; // Track WebSocket connection status
-  final int packetsSent; // Track how many packets sent to WebSocket
+  final bool wsConnected;
+  final int packetsSent;
+  final String? connectionStatus;
 
   const TelemetryState({
     this.loading = false,
@@ -21,6 +22,7 @@ class TelemetryState extends Equatable {
     this.connected = false,
     this.wsConnected = false,
     this.packetsSent = 0,
+    this.connectionStatus,
   });
 
   TelemetryState copyWith({
@@ -30,6 +32,7 @@ class TelemetryState extends Equatable {
     bool? connected,
     bool? wsConnected,
     int? packetsSent,
+    String? connectionStatus,
   }) {
     return TelemetryState(
       loading: loading ?? this.loading,
@@ -38,6 +41,7 @@ class TelemetryState extends Equatable {
       connected: connected ?? this.connected,
       wsConnected: wsConnected ?? this.wsConnected,
       packetsSent: packetsSent ?? this.packetsSent,
+      connectionStatus: connectionStatus ?? this.connectionStatus,
     );
   }
 
@@ -49,6 +53,7 @@ class TelemetryState extends Equatable {
         connected,
         wsConnected,
         packetsSent,
+        connectionStatus,
       ];
 }
 
@@ -57,9 +62,16 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   final IngestWsClient ingest;
 
   StreamSubscription<Map<String, dynamic>>? _sub;
+  StreamSubscription<void>? _errorSub;
   bool _starting = false;
   String? _mac;
   int _packetsSent = 0;
+
+  // Connection monitoring
+  Timer? _healthTimer;
+  DateTime? _lastDataTime;
+  static const Duration healthCheckInterval = Duration(seconds: 5);
+  static const Duration dataTimeout = Duration(seconds: 15);
 
   TelemetryCubit({required this.source, required this.ingest})
       : super(const TelemetryState());
@@ -69,53 +81,101 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     _starting = true;
     _mac = mac;
 
-    emit(TelemetryState(loading: true, data: state.data, error: null, connected: false));
+    emit(TelemetryState(
+      loading: true,
+      data: state.data,
+      error: null,
+      connected: false,
+      connectionStatus: "Connecting...",
+    ));
 
-    // Connect WebSocket in background without blocking
+    // Connect WebSocket in background
     _connectWebSocketInBackground();
 
     try {
-      // IMPORTANT: timeout so UI never gets stuck forever
+      // Connect to Bluetooth with timeout
       await source.connect(mac).timeout(const Duration(seconds: 15));
-    } catch (e) {
-      _starting = false;
+      
+      // Start listening to stream
+      await _setupStreamListeners();
+      
+      // Start health monitoring
+      _startHealthMonitoring();
+      
       emit(TelemetryState(
         loading: false,
-        error: "BT connect failed: $e",
+        error: null,
+        data: state.data,
+        connected: true,
+        wsConnected: state.wsConnected,
+        connectionStatus: "Connected",
+      ));
+      
+    } on TimeoutException {
+      emit(TelemetryState(
+        loading: false,
+        error: "Connection timeout",
         data: state.data,
         connected: false,
+        connectionStatus: "Timeout",
       ));
-      return;
-    }
-
-    // Bluetooth Connected ✅
-    emit(TelemetryState(loading: false, error: null, data: state.data, connected: true));
-
-    await _sub?.cancel();
-    _sub = source.stream.listen((payload) async {
-      // Parse telemetry first (for UI)
-      final t = parseTelemetry(payload);
-
-      // Send to WebSocket in background (non-blocking)
-      _sendToWebSocket(payload);
-
-      // Update UI with parsed telemetry
-      if (t != null) {
-        emit(state.copyWith(data: t, error: null));
-      }
-    }, onError: (e) {
+    } catch (e) {
       emit(TelemetryState(
         loading: false,
-        error: e.toString(),
+        error: "Connection failed: $e",
         data: state.data,
-        connected: state.connected,
+        connected: false,
+        connectionStatus: "Failed",
       ));
-    });
-
-    _starting = false;
+    } finally {
+      _starting = false;
+    }
   }
 
-  /// Connect WebSocket in background without blocking main flow
+  Future<void> _setupStreamListeners() async {
+    await _sub?.cancel();
+    await _errorSub?.cancel();
+
+    // Listen for telemetry data
+    _sub = source.stream.listen(
+      (payload) async {
+        _lastDataTime = DateTime.now();
+        
+        // Send to WebSocket
+        _sendToWebSocket(payload);
+        
+        // Parse telemetry
+        final t = parseTelemetry(payload);
+        
+        if (t != null) {
+          emit(state.copyWith(
+            data: t,
+            error: null,
+            connected: true,
+            connectionStatus: "Receiving data",
+          ));
+        }
+      },
+      onError: (error) {
+        print("❌ Telemetry stream error: $error");
+        if (error.toString().contains("disconnected")) {
+          emit(state.copyWith(
+            connected: false,
+            connectionStatus: "Disconnected",
+          ));
+          
+          // Try to reconnect after delay
+          _scheduleReconnect();
+        }
+      },
+    );
+
+    // Listen for errors from source
+    _errorSub = source.stream.asBroadcastStream().handleError((error) {
+      print("❌ Source error: $error");
+    }) as StreamSubscription<void>?;
+  }
+
   Future<void> _connectWebSocketInBackground() async {
     unawaited(Future(() async {
       try {
@@ -125,15 +185,12 @@ class TelemetryCubit extends Cubit<TelemetryState> {
         }
       } catch (e) {
         print('⚠️ WebSocket connect failed: $e');
-        // Don't emit error - WebSocket is optional
       }
     }));
   }
 
-  /// Send data to WebSocket in background (fire-and-forget)
   Future<void> _sendToWebSocket(Map<String, dynamic> payload) async {
     try {
-      // Optional: Add metadata to payload
       final enhancedPayload = Map<String, dynamic>.from(payload);
       enhancedPayload['_meta'] = {
         'device_id': _mac ?? 'unknown',
@@ -143,16 +200,12 @@ class TelemetryCubit extends Cubit<TelemetryState> {
 
       await ingest.send(enhancedPayload);
       _packetsSent++;
-
-      // Update state occasionally (not every packet)
+      
       if (_packetsSent % 10 == 0) {
         emit(state.copyWith(packetsSent: _packetsSent));
       }
     } catch (e) {
-      // Silent fail - WebSocket is optional
       print('⚠️ WebSocket send failed: $e');
-      
-      // Try to reconnect if not connected
       if (state.wsConnected) {
         emit(state.copyWith(wsConnected: false));
         _connectWebSocketInBackground();
@@ -160,33 +213,73 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     }
   }
 
+  void _startHealthMonitoring() {
+    _healthTimer?.cancel();
+    _healthTimer = Timer.periodic(healthCheckInterval, (timer) {
+      if (_lastDataTime != null && 
+          DateTime.now().difference(_lastDataTime!) > dataTimeout &&
+          state.connected) {
+        
+        print("⚠️ No data for ${dataTimeout.inSeconds} seconds");
+        
+        emit(state.copyWith(
+          connected: false,
+          connectionStatus: "Connection lost - No data",
+        ));
+        
+        _scheduleReconnect();
+      }
+    });
+  }
+
+  void _scheduleReconnect() {
+    // Wait 2 seconds then try to reconnect
+    Future.delayed(const Duration(seconds: 2), () {
+      if (_mac != null && !_starting && !state.connected) {
+        print("🔄 Attempting auto-reconnect...");
+        startWithMac(_mac!);
+      }
+    });
+  }
+
   Future<void> disconnect() async {
+    _healthTimer?.cancel();
+    _healthTimer = null;
+    
     await _sub?.cancel();
     _sub = null;
+    
+    await _errorSub?.cancel();
+    _errorSub = null;
+    
     try {
       await source.disconnect();
     } catch (_) {}
-    emit(TelemetryState(loading: false, error: null, data: state.data, connected: false));
+    
+    emit(TelemetryState(
+      loading: false,
+      error: null,
+      data: state.data,
+      connected: false,
+      connectionStatus: "Disconnected",
+    ));
   }
 
-  // Optional: Manual WebSocket reconnect
-  Future<void> reconnectWebSocket() async {
-    try {
-      await ingest.close();
-      await _connectWebSocketInBackground();
-    } catch (e) {
-      print('⚠️ WebSocket reconnect failed: $e');
+  Future<void> reconnect() async {
+    if (_mac != null) {
+      await startWithMac(_mac!);
     }
   }
 
   String? get currentMac => _mac;
-
   int get packetsSent => _packetsSent;
   bool get isWsConnected => state.wsConnected;
 
   @override
   Future<void> close() async {
+    _healthTimer?.cancel();
     await _sub?.cancel();
+    await _errorSub?.cancel();
     await source.dispose();
     await ingest.close();
     return super.close();
