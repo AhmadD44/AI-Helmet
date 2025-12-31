@@ -1,22 +1,25 @@
 class Telemetry {
-  final double latitude;
-  final double longitude;
-
-  final int? heartRate;
-  final bool crashFlag;
-
-  // Accel (G-force components)
+  final int t;
+  final int ts;
+  final bool helmetOn;
+  final int? heart;
+  final double lat;
+  final double lon;
   final double? ax;
   final double? ay;
   final double? az;
+  final double? velocity;
 
   const Telemetry({
-    required this.latitude,
-    required this.longitude,
-    this.heartRate,
-    this.crashFlag = false,
+    required this.t,
+    required this.ts,
+    required this.helmetOn,
+    this.heart,
+    required this.lat,
+    required this.lon,
     this.ax,
     this.ay,
     this.az,
+    this.velocity,
   });
 }

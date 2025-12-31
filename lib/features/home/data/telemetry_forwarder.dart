@@ -1,42 +1,86 @@
-import 'dart:convert';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
-import 'ingest_ws_client.dart';
 
-class TelemetryForwarder {
-  final IngestWsClient ingest;
+Telemetry? parseTelemetry(Map<String, dynamic> payload) {
+  try {
+    print('=== DEBUG PAYLOAD ===');
+    payload.forEach((key, value) {
+      print('$key: $value (type: ${value.runtimeType})');
+    });
+    
+    // Extract nested data
+    final heartMap = payload['heart'] as Map?;
+    final imu = payload['imu'] as Map?;
+    final gps = payload['gps'] as Map?;
+    final velocityMap = payload['velocity'] as Map?;
+    
+    if (gps != null) {
+      print('=== GPS DATA ===');
+      gps.forEach((key, value) {
+        print('  gps.$key: $value (type: ${value.runtimeType})');
+      });
+    }
+    
+    if (imu != null) {
+      print('=== IMU DATA ===');
+      imu.forEach((key, value) {
+        print('  imu.$key: $value (type: ${value.runtimeType})');
+      });
+    }
 
-  TelemetryForwarder({required this.ingest});
+    // Safe parsing function
+    double? parseDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      if (value is String) {
+        print('⚠️ Converting string to double: "$value"');
+        return double.tryParse(value);
+      }
+      return null;
+    }
 
-  /// Returns Telemetry if payload is telemetry, otherwise null.
-  /// Always forwards payload to backend ingest.
-  Future<Telemetry?> handleIncomingJsonString(String jsonStr) async {
-    // Some logs might include prefixes like: "[12:59:06 PM] {...}"
-    final raw = jsonStr.trim();
-    final start = raw.indexOf('{');
-    final cleaned = (start >= 0) ? raw.substring(start) : raw;
+    int? parseInt(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toInt();
+      if (value is String) {
+        print('⚠️ Converting string to int: "$value"');
+        return int.tryParse(value);
+      }
+      return null;
+    }
 
-    final payload = jsonDecode(cleaned) as Map<String, dynamic>;
+    // Get heart rate from nested map
+    final heartRate = heartMap?['hr'];
+    final velocityValue = velocityMap?['kmh'];
+    
+    // GPS uses 'lng' not 'lon' based on your debug output
+    final gpsLon = gps?['lng'] ?? gps?['lon'];
 
-    // ✅ forward to backend ingest (ws://.../ws/ingest)
-    // If you don't want duplicates (because mock_sender already ingests),
-    // you can remove this line.
-    await ingest.send(payload);
-
-    if (payload['type'] != 'telemetry') return null;
-
-    final gps = payload['gps'] as Map<String, dynamic>? ?? {};
-    final hr = payload['heart_rate'] as Map<String, dynamic>? ?? {};
-    final imu = payload['imu'] as Map<String, dynamic>? ?? {};
-
-    return Telemetry(
-      latitude: ((gps['lat'] as num?)?.toDouble()) ?? 33.8938,
-      longitude: ((gps['lng'] as num?)?.toDouble()) ?? 35.5018,
-      heartRate: (hr['hr'] as num?)?.toInt(),
-      crashFlag: payload['crash_flag'],
-      ax: (imu['ax'] as num?)?.toDouble(),
-      ay: (imu['ay'] as num?)?.toDouble(),
-      az: (imu['az'] as num?)?.toDouble(),
-      // ts: payload['ts'] as String?,
+    final telemetry = Telemetry(
+      // t is "telemetry" string, so use ts or generate packet number
+      t: parseInt(payload['ts']) ?? 0, // Use timestamp as packet number
+      ts: parseInt(payload['ts']) ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      helmetOn: payload['helmet_on'] == true,
+      heart: parseInt(heartRate), // Get from nested heart.hr
+      lat: parseDouble(gps?['lat']) ?? 0.0,
+      lon: parseDouble(gpsLon) ?? 0.0, // Use 'lng' field
+      ax: parseDouble(imu?['ax']), // IMU uses 'ax', 'ay', 'az' (not 'x', 'y', 'z')
+      ay: parseDouble(imu?['ay']),
+      az: parseDouble(imu?['az']),
+      velocity: parseDouble(velocityValue), // Get from velocity.kmh
     );
+
+    print('✅ Telemetry parsed successfully');
+    print('  Packet #: ${telemetry.t}');
+    print('  Timestamp: ${telemetry.ts}');
+    print('  Heart: ${telemetry.heart} bpm');
+    print('  GPS: ${telemetry.lat}, ${telemetry.lon}');
+    print('  Velocity: ${telemetry.velocity} km/h');
+    print('  IMU: ax=${telemetry.ax}, ay=${telemetry.ay}, az=${telemetry.az}');
+    
+    return telemetry;
+  } catch (e, s) {
+    print('❌ Telemetry parse crash: $e');
+    print('Stack trace: $s');
+    return null;
   }
 }

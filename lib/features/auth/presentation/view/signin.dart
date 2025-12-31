@@ -43,10 +43,10 @@ class _SignInScreenState extends State<SignInScreen> {
         if (state is LoginLoading) {
           isloading = true;
         } else if (state is LoginSuccess) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => HomeScreen()),
-          );
+          if (!context.mounted) return;
+Navigator.of(context).pushReplacement(
+  MaterialPageRoute(builder: (_) => const HomeScreen()),
+);
           isloading = false;
         } else if (state is LoginFailure) {
           isloading = false;

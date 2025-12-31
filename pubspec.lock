@@ -294,6 +294,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "9.1.1"
+  flutter_blue_classic:
+    dependency: "direct main"
+    description:
+      name: flutter_blue_classic
+      sha256: b644b3ade97879e6f9b4a90e98137e5e66f60ad03b42e459781dcb0109b834d6
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.7"
   flutter_blue_plus:
     dependency: "direct main"
     description:

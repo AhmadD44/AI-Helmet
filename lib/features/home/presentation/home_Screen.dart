@@ -1,12 +1,13 @@
+import 'dart:async';
 import 'dart:math' as Math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:isd/core/utils/esp_prefs.dart';
-import 'package:isd/features/home/presentation/allTrips/my_trips.dart';
-import 'package:isd/features/home/presentation/connect_esp_page.dart';
-import 'package:isd/features/home/presentation/select_esp_device_page.dart';
 import 'package:latlong2/latlong.dart' as latlng;
+
+import 'package:isd/core/utils/esp_prefs.dart';
+import 'package:isd/features/home/presentation/connect_esp_page.dart';
+import 'package:isd/features/home/presentation/allTrips/my_trips.dart';
 
 import 'package:isd/features/home/presentation/widgets/about_us.dart';
 import 'package:isd/features/home/presentation/widgets/drawer.dart';
@@ -24,55 +25,93 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final GlobalKey<MapViewState> _mapKey = GlobalKey<MapViewState>();
 
   latlng.LatLng? _destination;
   bool _tripStarted = false;
   bool _tripCompleted = false;
-
   final latlng.Distance _distance = latlng.Distance();
 
   late final FlutterTts _tts;
   DateTime? _lastVoiceAt;
   String? _lastHint;
 
-  // ✅ We compute heading from GPS movement (previous -> current)
-  latlng.LatLng? _lastPos;
-  DateTime? _lastPosAt;
+  latlng.LatLng? _prevPos;
+
+  String? _selectedMac;
+  bool _connecting = false;
+  bool _autoReconnectAttempted = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
     _tts = FlutterTts();
     _tts.setLanguage("en-US");
     _tts.setSpeechRate(0.9);
-    _initEspAndStart();
-    // Start receiving telemetry (stream)
-    // context.read<TelemetryCubit>().start();
-  }
-  
-Future<void> _initEspAndStart() async {
-  String? mac = await EspPrefs.loadMac();
 
-  if (mac == null) {
-    mac = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const SelectEspDevicePage()),
-    );
-
-    if (mac == null) return; // user cancelled
-    await EspPrefs.saveMac(mac);
+    // ✅ Load saved MAC
+    _loadSavedMacAndAutoConnect();
   }
 
-  if (!mounted) return;
-  context.read<TelemetryCubit>().startWithMac(mac);
-}
+  Future<void> _loadSavedMacAndAutoConnect() async {
+    final mac = await EspPrefs.loadMac();
+    if (!mounted) return;
+    
+    setState(() => _selectedMac = mac);
+    
+    // ✅ Auto-reconnect if we have a saved MAC
+    if (mac != null) {
+      // Wait for UI to build and cubit to be available
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted && !_autoReconnectAttempted) {
+          await _silentAutoReconnect(mac);
+        }
+      });
+    }
+  }
 
+  Future<void> _silentAutoReconnect(String mac) async {
+    if (_connecting || _autoReconnectAttempted) return;
+    
+    _autoReconnectAttempted = true;
+    print("🔄 Auto-reconnecting to $mac...");
+    
+    try {
+      await context.read<TelemetryCubit>()
+          .startWithMac(mac)
+          .timeout(const Duration(seconds: 12));
+          
+      print("✅ Auto-reconnect successful");
+    } on TimeoutException {
+      print("⏰ Auto-reconnect timeout");
+    } catch (e) {
+      print("⚠️ Auto-reconnect failed: $e");
+      // Don't show error - it's automatic
+    }
+  }
 
-
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Auto-reconnect when app returns to foreground
+    if (state == AppLifecycleState.resumed && 
+        _selectedMac != null && 
+        !_autoReconnectAttempted) {
+      
+      // Check if we need to reconnect
+      final cubit = context.read<TelemetryCubit>();
+      if (!cubit.state.connected) {
+        _silentAutoReconnect(_selectedMac!);
+      }
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tts.stop();
     super.dispose();
   }
@@ -80,36 +119,102 @@ Future<void> _initEspAndStart() async {
   Future<void> _speak(String text) async {
     if (!mounted) return;
     final now = DateTime.now();
-
-    // avoid spamming same message
     if (_lastVoiceAt != null &&
         now.difference(_lastVoiceAt!).inSeconds < 6 &&
         text == _lastHint) {
       return;
     }
-
     _lastVoiceAt = now;
     _lastHint = text;
 
     await _tts.stop();
-    if (!mounted) return; 
+    if (!mounted) return;
     await _tts.speak(text);
   }
 
-  void _handleTelemetryUpdate(Telemetry? t) {
-    if (t == null) return;
+  // ====== CONNECT FLOW (manual) ======
+  Future<void> _pickAndConnectEsp() async {
+    if (_connecting) return;
+    setState(() => _connecting = true);
 
-    final current = latlng.LatLng(t.latitude, t.longitude);
+    try {
+      // Open scanner page
+      final mac = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              ConnectEspPage(source: context.read<TelemetryCubit>().source),
+        ),
+      );
 
-    // save last position for heading calculation
-    _updateLastPosition(current);
+      if (mac == null) {
+        if (!mounted) return;
+        setState(() => _connecting = false);
+        return; // user canceled
+      }
 
-    if (!_tripStarted || _destination == null) return;
+      await EspPrefs.saveMac(mac);
+      if (!mounted) return;
+      setState(() => _selectedMac = mac);
 
+      // Start BT stream now
+      await context.read<TelemetryCubit>().startWithMac(mac);
+    } catch (e) {
+      // never crash
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Connect failed: $e")));
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
+  }
+
+  Future<void> _reconnectSaved() async {
+    final mac = _selectedMac;
+    if (mac == null) return;
+
+    if (_connecting) return;
+    setState(() => _connecting = true);
+
+    try {
+      await context
+          .read<TelemetryCubit>()
+          .startWithMac(mac)
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Connection timeout")));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Reconnect failed: $e")));
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
+  }
+
+  Future<void> _forgetDevice() async {
+    await EspPrefs.clearMac();
+    await context.read<TelemetryCubit>().disconnect();
+    if (!mounted) return;
+    setState(() {
+      _selectedMac = null;
+      _autoReconnectAttempted = false;
+    });
+  }
+
+  // ===== navigation hints (optional) =====
+  void _handleTelemetryUpdateWithHeading(Telemetry? t, double? heading) {
+    if (!_tripStarted || _destination == null || t == null) return;
+
+    final current = latlng.LatLng(t.lat, t.lon);
     final dest = _destination!;
     final meters = _distance(current, dest);
 
-    // Arrival detection
     if (meters < 25 && !_tripCompleted) {
       if (!mounted) return;
       setState(() {
@@ -120,9 +225,6 @@ Future<void> _initEspAndStart() async {
       return;
     }
 
-    // ✅ Direction hint WITHOUT bearing from telemetry:
-    // Use computed heading from GPS movement.
-    final heading = _computedHeading();
     if (heading == null) {
       _speak("Head towards your destination.");
       return;
@@ -143,68 +245,16 @@ Future<void> _initEspAndStart() async {
     _speak(hint);
   }
 
-  void _updateLastPosition(latlng.LatLng current) {
-    final now = DateTime.now();
-
-    // Only update last position if enough time passed or moved enough distance
-    if (_lastPos == null) {
-      _lastPos = current;
-      _lastPosAt = now;
-      return;
-    }
-
-    final movedMeters = _distance(_lastPos!, current);
-    final seconds = _lastPosAt == null ? 999 : now.difference(_lastPosAt!).inSeconds;
-
-    // if moved > 2m or 2 seconds passed, accept update
-    if (movedMeters > 2 || seconds >= 2) {
-      _lastPos = current;
-      _lastPosAt = now;
-    }
-  }
-
-  /// Returns heading in degrees [0..360), computed from last GPS movement.
-  double? _computedHeading() {
-    if (_lastPos == null) return null;
-
-    // Need TWO positions: previous and current.
-    // We use _lastPos as previous, but to compute heading we need a newer position.
-    // Here we store previous in _prevPos by caching before updating; to keep it simple:
-    // We'll compute heading using a short history inside this function.
-
-    // If we don't have enough movement, heading is unreliable.
-    // (We already require moved > 2m in update)
-    // So we compute heading from lastPos -> current using a stored "current" would be better,
-    // but we only have _lastPos.
-    // We'll instead compute heading inside _handleTelemetryUpdate by using two points:
-    // previous = _prevPos, current = current. We'll keep _prevPos.
-
-    return null;
-  }
-
-  // ✅ Keep two-point history for heading (prev -> current)
-  latlng.LatLng? _prevPos;
-
-  void _updatePrevCurrent(latlng.LatLng current) {
+  double? _headingFromPrev(latlng.LatLng current) {
     if (_prevPos == null) {
       _prevPos = current;
-      return;
+      return null;
     }
-
-    final moved = _distance(_prevPos!, current);
-    if (moved > 2) {
-      // only shift if real movement
-      _prevPos = current;
-    }
-  }
-
-  double? _headingFromPrev(latlng.LatLng current) {
-    if (_prevPos == null) return null;
-
     final moved = _distance(_prevPos!, current);
     if (moved < 2) return null;
-
-    return _bearingBetween(_prevPos!, current);
+    final h = _bearingBetween(_prevPos!, current);
+    _prevPos = current;
+    return h;
   }
 
   double _bearingBetween(latlng.LatLng from, latlng.LatLng to) {
@@ -215,7 +265,8 @@ Future<void> _initEspAndStart() async {
 
     final dLon = lon2 - lon1;
     final y = Math.sin(dLon) * Math.cos(lat2);
-    final x = Math.cos(lat1) * Math.sin(lat2) -
+    final x =
+        Math.cos(lat1) * Math.sin(lat2) -
         Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
 
     final brng = Math.atan2(y, x);
@@ -231,17 +282,220 @@ Future<void> _initEspAndStart() async {
     if (a < -180) a += 360;
     return a;
   }
+  // ===== end nav hints =====
+
+  // ===== UI Helper Methods =====
+  
+  Widget _buildConnectionCard(TelemetryState state) {
+    // Show card when: loading, has error, disconnected, or no saved MAC
+    final shouldShowCard = state.loading || 
+        state.error != null || 
+        !state.connected || 
+        _selectedMac == null;
+    
+    // Hide card when everything is good
+    if (!shouldShowCard) {
+      return const SizedBox.shrink();
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: state.error != null ? Colors.red.withOpacity(0.5) : 
+                   state.loading ? Colors.blue.withOpacity(0.5) :
+                   Colors.grey.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.bluetooth,
+              size: 22,
+              color: state.loading ? Colors.blue :
+                     state.error != null ? Colors.red :
+                     !state.connected ? Colors.orange :
+                     Colors.green,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _selectedMac == null
+                        ? "No ESP connected"
+                        : "Saved ESP: $_selectedMac",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (state.loading)
+                    Text(
+                      "Connecting...",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  if (state.error != null)
+                    Text(
+                      "Error: ${state.error}",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (!state.connected && !state.loading && state.error == null)
+                    Text(
+                      "Disconnected",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  // Auto-reconnect status
+                  if (_autoReconnectAttempted && !state.connected && !state.loading)
+                    Text(
+                      "Auto-reconnect attempted",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (_selectedMac == null)
+              ElevatedButton(
+                onPressed: _connecting ? null : _pickAndConnectEsp,
+                child: Text(_connecting ? "..." : "Connect"),
+              )
+            else ...[
+              OutlinedButton(
+                onPressed: _connecting ? null : _reconnectSaved,
+                child: Text(_connecting ? "..." : "Reconnect"),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: "Forget device",
+                onPressed: _connecting ? null : _forgetDevice,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(TelemetryState state) {
+    return SizedBox(
+      height: 200,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 48,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Telemetry error:\n${state.error}",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _selectedMac != null ? _reconnectSaved : null,
+                child: Text("Retry Connection"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWaitingForTelemetry(BuildContext context) {
+    return SizedBox(
+      height: 200,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                _selectedMac == null
+                    ? "Connect your ESP to start receiving telemetry."
+                    : "Connected to $_selectedMac\nWaiting for telemetry...",
+                textAlign: TextAlign.center,
+              ),
+              if (_selectedMac != null)
+                ElevatedButton(
+                  onPressed: _reconnectSaved,
+                  child: Text("Reconnect"),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTelemetryContent(BuildContext context, TelemetryState state) {
+    // ✅ Loading state
+    if (state.loading) {
+      return const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // ✅ Error state (no crash)
+    if (state.error != null && state.data == null) {
+      return _buildErrorState(state);
+    }
+
+    // ✅ Connected but waiting for telemetry packets
+    if (state.data == null) {
+      return _buildWaitingForTelemetry(context);
+    }
+
+    // ✅ Metrics Grid (with telemetry data)
+    return MetricsGrid(telemetry: state.data);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       drawer: AppDrawer(
-        onMyTrips: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const MyTripsPage())),
-        onAbout: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
-        onFaq: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const FaqPage())),
+        onMyTrips: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const MyTripsPage())),
+        onAbout: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const AboutUsPage())),
+        onFaq: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const FaqPage())),
         onSignOut: widget.onSignOut,
       ),
       appBar: AppBar(
@@ -262,192 +516,48 @@ Future<void> _initEspAndStart() async {
       ),
       body: BlocListener<TelemetryCubit, TelemetryState>(
         listener: (context, state) {
-          // Keep prev/current for heading
           final t = state.data;
           if (t != null) {
-            final cur = latlng.LatLng(t.latitude, t.longitude);
-            // compute heading using prev->cur
+            final cur = latlng.LatLng(t.lat, t.lon);
             final heading = _headingFromPrev(cur);
-            // update prev after using it
-            _updatePrevCurrent(cur);
-
-            // Use same logic but with computed heading:
             _handleTelemetryUpdateWithHeading(t, heading);
-          } else {
-            _handleTelemetryUpdate(null);
           }
         },
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final isWide = c.maxWidth >= 900;
+        child: BlocBuilder<TelemetryCubit, TelemetryState>(
+          // ✅ SINGLE BlocBuilder for entire UI
+          builder: (context, state) {
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  // ✅ Connection Card
+                  _buildConnectionCard(state),
 
-            return BlocBuilder<TelemetryCubit, TelemetryState>(
-              builder: (context, state) {
-                if (state.error != null && state.data == null) {
-                  return Center(child: Text('Error: ${state.error}'));
-                }
+                  // ✅ Map View
+                  SizedBox(
+                    height: 400,
+                    child: MapView(
+                      key: _mapKey,
+                      telemetry: state.data,
+                      destination: _destination,
+                      tripActive: _tripStarted,
+                      onDestinationSelected: (dest) {
+                        setState(() {
+                          _destination = dest;
+                          _tripStarted = false;
+                          _tripCompleted = false;
+                        });
+                      },
+                    ),
+                  ),
 
-                final map = MapView(
-                  key: _mapKey,
-                  telemetry: state.data,
-                  destination: _destination,
-                  tripActive: _tripStarted,
-                  onDestinationSelected: (dest) {
-                    setState(() {
-                      _destination = dest;
-                      _tripStarted = false;
-                      _tripCompleted = false;
-                    });
-                  },
-                );
-
-                final metrics = MetricsGrid(telemetry: state.data);
-
-                if (isWide) {
-                  return Row(
-                    children: [
-                      Expanded(flex: 3, child: map),
-                      Expanded(flex: 2, child: metrics),
-                    ],
-                  );
-                }
-                return Column(
-                  children: [
-                    Expanded(flex: 9, child: map),
-                    Expanded(flex: 11, child: metrics),
-                  ],
-                );
-              },
+                  // ✅ Telemetry Content (all states handled here)
+                  _buildTelemetryContent(context, state),
+                ],
+              ),
             );
           },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _mapKey.currentState?.recenter(),
-        child: const Icon(Icons.near_me),
-      ),
-      bottomNavigationBar: _destination == null
-          ? null
-          : SafeArea(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, -6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _tripCompleted
-                                ? 'Trip completed'
-                                : (_tripStarted
-                                    ? 'Navigation running'
-                                    : 'Destination selected'),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(color: Colors.white),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_destination!.latitude.toStringAsFixed(5)}, '
-                            '${_destination!.longitude.toStringAsFixed(5)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed: _tripCompleted
-                          ? null
-                          : () {
-                              setState(() {
-                                if (_tripStarted) {
-                                  _tripStarted = false;
-                                  _tripCompleted = false;
-                                  _speak("Trip stopped.");
-                                } else {
-                                  _tripStarted = true;
-                                  _tripCompleted = false;
-                                  _speak("Starting navigation.");
-                                }
-                              });
-                            },
-                      icon: Icon(
-                        _tripCompleted
-                            ? Icons.check
-                            : (_tripStarted ? Icons.stop : Icons.play_arrow),
-                      ),
-                      label: Text(
-                        _tripCompleted
-                            ? 'Trip completed'
-                            : (_tripStarted ? 'Stop trip' : 'Start trip'),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
     );
-  }
-
-  void _handleTelemetryUpdateWithHeading(Telemetry? t, double? heading) {
-    if (!_tripStarted || _destination == null || t == null) return;
-
-    final current = latlng.LatLng(t.latitude, t.longitude);
-    final dest = _destination!;
-    final meters = _distance(current, dest);
-
-    if (meters < 25 && !_tripCompleted) {
-      if (!mounted) return;
-      setState(() {
-        _tripStarted = false;
-        _tripCompleted = true;
-      });
-      _speak("You have arrived at your destination.");
-      return;
-    }
-
-    if (heading == null) {
-      _speak("Head towards your destination.");
-      return;
-    }
-
-    final bearingToDest = _bearingBetween(current, dest);
-    final delta = _normalizeAngle(bearingToDest - heading);
-
-    String hint;
-    if (delta > 25) {
-      hint = "Turn right towards your destination.";
-    } else if (delta < -25) {
-      hint = "Turn left towards your destination.";
-    } else {
-      hint = "Continue straight.";
-    }
-
-    _speak(hint);
   }
 }

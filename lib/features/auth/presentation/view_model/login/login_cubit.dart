@@ -27,7 +27,7 @@ class LoginCubit extends Cubit<LoginState> {
           context,
           "Please verify your email before signing in.",
         );
-        emit(LoginFailure());
+        emit(LoginFailure("Please verify your email before signing in."));
         return;
       }
 
@@ -62,10 +62,10 @@ class LoginCubit extends Cubit<LoginState> {
       emit(LoginSuccess());
     } on FirebaseAuthException catch (e) {
       Auth().showErrorSnackBar(context, e.message ?? 'Auth error');
-      emit(LoginFailure());
+      emit(LoginFailure("${e.message}"));
     } catch (e) {
       Auth().showErrorSnackBar(context, 'An unexpected error occurred');
-      emit(LoginFailure());
+      emit(LoginFailure('An unexpected error occurred'));
     }
   }
 }

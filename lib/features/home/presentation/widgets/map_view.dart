@@ -1,259 +1,287 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
-import 'package:http/http.dart' as http;
+
+import 'telemetry.dart';
 
 class MapView extends StatefulWidget {
   final Telemetry? telemetry;
   final latlng.LatLng? destination;
   final bool tripActive;
-  final ValueChanged<latlng.LatLng>? onDestinationSelected;
+  final void Function(latlng.LatLng dest)? onDestinationSelected;
 
   const MapView({
     super.key,
     required this.telemetry,
     this.destination,
-    required this.tripActive,
+    this.tripActive = false,
     this.onDestinationSelected,
   });
 
   @override
-  MapViewState createState() => MapViewState();
+  State<MapView> createState() => MapViewState();
 }
 
 class MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
   bool _centeredOnce = false;
 
-  static final latlng.LatLng _fallbackCenter = latlng.LatLng(
-    33.8938,
-    35.5018,
-  ); // Beirut
+  /// Check if GPS coordinates are valid (not 0,0 or unrealistic)
+  bool get _hasValidGPS {
+    final t = widget.telemetry;
+    if (t == null) return false;
+    
+    // Check for Null Island (0,0)
+    final isZeroZero = t.lat == 0.0 && t.lon == 0.0;
+    
+    // Check if coordinates are within reasonable bounds
+    final isWithinBounds = t.lat >= -90 && t.lat <= 90 && 
+                           t.lon >= -180 && t.lon <= 180;
+    
+    // Saida city bounds (approximate) - don't show if already in Saida area
+    final inSaidaArea = t.lat > 33.5 && t.lat < 33.6 && 
+                        t.lon > 35.3 && t.lon < 35.4;
+    
+    return !isZeroZero && isWithinBounds && !inSaidaArea;
+  }
 
-  // 🟦 Road route points returned from OSRM
-  List<latlng.LatLng> _routePoints = [];
-  bool _fetchingRoute = false;
-  latlng.LatLng? _lastFrom;
-  latlng.LatLng? _lastTo;
+  /// Get Saida (Sidon), Lebanon coordinates
+  latlng.LatLng get _saidaLocation {
+    // Saida (Sidon), Lebanon coordinates
+    // Latitude: 33.5631° N, Longitude: 35.3689° E
+    return const latlng.LatLng(33.5631, 35.3689);
+  }
+
+  /// Public method (used by HomeScreen)
+  void recenter() {
+    if (_hasValidGPS && widget.telemetry != null) {
+      _mapController.move(
+        latlng.LatLng(widget.telemetry!.lat, widget.telemetry!.lon),
+        16,
+      );
+    } else {
+      // Center to Saida, Lebanon
+      _mapController.move(_saidaLocation, 13);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize map to Saida immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _mapController.move(_saidaLocation, 13);
+      }
+    });
+  }
 
   @override
   void didUpdateWidget(covariant MapView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _maybeRequestRoute();
+
+    // Center only ONCE after first valid telemetry
+    if (!_centeredOnce && _hasValidGPS && widget.telemetry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        _mapController.move(
+          latlng.LatLng(widget.telemetry!.lat, widget.telemetry!.lon),
+          16,
+        );
+        _centeredOnce = true;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = widget.telemetry;
-    final latlng.LatLng? me = (t == null)
-        ? null
-        : latlng.LatLng(t.latitude, t.longitude);
+    // Determine which location to show
+    final currentLocation = _hasValidGPS && widget.telemetry != null
+        ? latlng.LatLng(widget.telemetry!.lat, widget.telemetry!.lon)
+        : _saidaLocation;
 
-    // 🔵 driver + 🔴 destination markers
-    final markers = <Marker>[
-      if (me != null)
-        Marker(
-          point: me,
-          width: 40,
-          height: 40,
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF00D1FF),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.35),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.pedal_bike, color: Colors.white, size: 22),
-          ),
-        ),
-      if (widget.destination != null)
-        Marker(
-          point: widget.destination!,
-          width: 38,
-          height: 38,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.redAccent,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.35),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.flag, color: Colors.white, size: 20),
-          ),
-        ),
-    ];
-
-    // 🟦 polyline now uses OSRM route (road path), not straight line
-    final polylines = <Polyline>[
-      if (_routePoints.isNotEmpty && widget.tripActive)
-        Polyline(
-          points: _routePoints,
-          strokeWidth: 4,
-          color: Colors.blueAccent,
-        ),
-    ];
-
-    _maybeCenter(me);
+    // Determine initial zoom level
+    final initialZoom = _hasValidGPS ? 16.0 : 13.0;
 
     return Stack(
       children: [
-        ClipRRect(
-          borderRadius: const BorderRadius.vertical(
-            bottom: Radius.circular(24),
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: currentLocation,
+            initialZoom: initialZoom,
+            onTap: (tapPosition, point) {
+              if (widget.onDestinationSelected != null) {
+                widget.onDestinationSelected!(point);
+              }
+            },
           ),
-          child: FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _fallbackCenter,
-              initialZoom: 14.5,
-              minZoom: 3,
-              maxZoom: 19,
-              keepAlive: true,
-              onTap: (tapPos, point) {
-                if (widget.onDestinationSelected != null) {
-                  // user chooses a new destination
-                  widget.onDestinationSelected!(point);
-                  // clear old route so we fetch a new one
-                  setState(() {
-                    _routePoints = [];
-                    _lastFrom = null;
-                    _lastTo = null;
-                  });
-                }
-              },
+          children: [
+            // 🌍 Tiles
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.isd',
+              tileProvider: NetworkTileProvider(),
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.example.isd',
+
+            // 📍 Current position (only if valid GPS)
+            if (_hasValidGPS && widget.telemetry != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 42,
+                    height: 42,
+                    point: currentLocation,
+                    child: const Icon(
+                      Icons.navigation,
+                      size: 36,
+                      color: Colors.blue,
+                    ),
+                  ),
+                ],
               ),
-              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-              MarkerLayer(markers: markers),
-            ],
-          ),
+
+            // 📍 Saida marker (when GPS is invalid)
+            if (!_hasValidGPS)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 40,
+                    height: 40,
+                    point: _saidaLocation,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.8),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.location_city,
+                        size: 24,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+            // 🎯 Destination marker
+            if (widget.destination != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 40,
+                    height: 40,
+                    point: widget.destination!,
+                    child: const Icon(
+                      Icons.flag,
+                      size: 34,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+
+            // ➖ Route line (only if valid GPS and trip active)
+            if (widget.tripActive &&
+                widget.destination != null &&
+                _hasValidGPS &&
+                widget.telemetry != null)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: [currentLocation, widget.destination!],
+                    strokeWidth: 4,
+                    color: Colors.greenAccent,
+                  ),
+                ],
+              ),
+          ],
         ),
 
-        // Small hint when there is no destination yet
-        if (widget.destination == null)
+        // GPS status overlay
+        if (!_hasValidGPS && widget.telemetry != null)
           Positioned(
-            left: 16,
-            bottom: 16,
+            top: 10,
+            left: 10,
+            right: 10,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.55),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.touch_app, size: 16, color: Colors.white70),
-                  SizedBox(width: 6),
-                  Text(
-                    'Tap on map to select destination',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                color: Colors.orange.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.gps_off, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Waiting for GPS Signal',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Showing Saida, Lebanon',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (widget.telemetry!.lat == 0 && widget.telemetry!.lon == 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'GPS: (0,0)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
+
+        // Recenter button
+        Positioned(
+          bottom: 20,
+          right: 20,
+          child: FloatingActionButton.small(
+            onPressed: recenter,
+            backgroundColor: Colors.white,
+            child: Icon(
+              _hasValidGPS ? Icons.my_location : Icons.location_city,
+              color: _hasValidGPS ? Colors.blue : Colors.orange,
+            ),
+          ),
+        ),
       ],
     );
-  }
-
-  // 🔁 Ask routing server for a road path when we have both current location & destination
-  void _maybeRequestRoute() {
-    final t = widget.telemetry;
-    if (t == null || widget.destination == null) return;
-
-    final from = latlng.LatLng(t.latitude, t.longitude);
-    final to = widget.destination!;
-
-    // if from/to didn't really change, don't refetch
-    if (_lastFrom != null &&
-        _lastTo != null &&
-        _lastFrom!.latitude == from.latitude &&
-        _lastFrom!.longitude == from.longitude &&
-        _lastTo!.latitude == to.latitude &&
-        _lastTo!.longitude == to.longitude) {
-      return;
-    }
-
-    _fetchRoute(from, to);
-  }
-
-  Future<void> _fetchRoute(latlng.LatLng from, latlng.LatLng to) async {
-    if (_fetchingRoute) return;
-    _fetchingRoute = true;
-
-    try {
-      // Using OSRM (Open Source Routing Machine) public demo server
-      // NOTE: good for dev/testing, for production you should host your own or use a provider.
-      final url = Uri.parse(
-        'https://router.project-osrm.org/route/v1/driving/'
-        '${from.longitude},${from.latitude};'
-        '${to.longitude},${to.latitude}'
-        '?overview=full&geometries=geojson',
-      );
-
-      final res = await http.get(url);
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body) as Map<String, dynamic>;
-        final routes = data['routes'] as List<dynamic>?;
-        if (routes != null && routes.isNotEmpty) {
-          final geometry = routes[0]['geometry'] as Map<String, dynamic>;
-          final coords = geometry['coordinates'] as List<dynamic>;
-
-          final points = coords
-              .map(
-                (c) => latlng.LatLng(
-                  (c[1] as num).toDouble(),
-                  (c[0] as num).toDouble(),
-                ),
-              )
-              .toList();
-
-          if (mounted) {
-            setState(() {
-              _routePoints = points;
-              _lastFrom = from;
-              _lastTo = to;
-            });
-          }
-        }
-      } else {
-        // you can log or handle errors here if you want
-      }
-    } catch (e) {
-      // handle network errors if needed
-    } finally {
-      _fetchingRoute = false;
-    }
-  }
-
-  void _maybeCenter(latlng.LatLng? me) {
-    if (me == null || _centeredOnce) return;
-    _centeredOnce = true;
-    _mapController.move(me, 16);
-  }
-
-  void recenter() {
-    final t = widget.telemetry;
-    if (t == null) return;
-    final me = latlng.LatLng(t.latitude, t.longitude);
-    _mapController.move(me, 17);
   }
 }

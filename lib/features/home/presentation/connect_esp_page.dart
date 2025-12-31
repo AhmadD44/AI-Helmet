@@ -20,22 +20,14 @@ class _ConnectEspPageState extends State<ConnectEspPage> {
   @override
   void initState() {
     super.initState();
-    _initAndScan();
+    _startScan();
   }
 
   @override
   void dispose() {
     _scanSub?.cancel();
+    widget.source.stopScan();
     super.dispose();
-  }
-
-  Future<void> _initAndScan() async {
-    try {
-      await widget.source.initPermissions();
-      await _startScan();
-    } catch (e) {
-      setState(() => _err = e.toString());
-    }
   }
 
   Future<void> _startScan() async {
@@ -45,13 +37,21 @@ class _ConnectEspPageState extends State<ConnectEspPage> {
       _err = null;
     });
 
-    _scanSub?.cancel();
-    _scanSub = widget.source.onDeviceDiscovered().listen((d) {
-      final exists = _devices.any((x) => x.address == d.address);
-      if (!exists) setState(() => _devices.add(d));
-    });
+    try {
+      await _scanSub?.cancel();
+      _scanSub = widget.source.onDeviceDiscovered().listen((d) {
+        final exists = _devices.any((x) => x.address == d.address);
+        if (!exists && mounted) setState(() => _devices.add(d));
+      });
 
-    await widget.source.startScan();
+      await widget.source.startScan();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _err = e.toString();
+        _scanning = false;
+      });
+    }
   }
 
   Future<void> _stopScan() async {
@@ -80,7 +80,7 @@ class _ConnectEspPageState extends State<ConnectEspPage> {
         ],
       ),
       body: _err != null
-          ? Center(child: Text("Error: $_err"))
+          ? Center(child: Text("Error:\n$_err", textAlign: TextAlign.center))
           : Column(
               children: [
                 if (_scanning) const LinearProgressIndicator(minHeight: 2),
@@ -92,11 +92,12 @@ class _ConnectEspPageState extends State<ConnectEspPage> {
                       final d = _devices[i];
                       return ListTile(
                         leading: const Icon(Icons.bluetooth_searching),
-                        title: Text(d.name?.isNotEmpty == true ? d.name! : "Unknown"),
-                        subtitle: Text(d.address),
+                        title: Text((d.name ?? "").isNotEmpty ? d.name! : "Unknown"),
+                        subtitle: Text(d.address ?? ""),
                         onTap: () async {
                           await _stopScan();
-                          Navigator.pop(context, d.address); // return MAC
+                          if (!mounted) return;
+                          Navigator.pop(context, d.address);
                         },
                       );
                     },
