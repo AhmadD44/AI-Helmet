@@ -1,86 +1,90 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:isd/core/errors/flutter_bl_handler.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 
-Telemetry? parseTelemetry(Map<String, dynamic> payload) {
+// Global JSON buffer instance
+final _jsonBufferHelper = JsonBufferHelper();
+
+Telemetry? parseTelemetry(String rawData) {
   try {
-    print('=== DEBUG PAYLOAD ===');
-    payload.forEach((key, value) {
-      print('$key: $value (type: ${value.runtimeType})');
-    });
+    print('📥 Raw data received: ${rawData.length} chars');
+    print('📥 Preview: ${rawData.substring(0, min(rawData.length, 50))}');
     
-    // Extract nested data
-    final heartMap = payload['heart'] as Map?;
-    final imu = payload['imu'] as Map?;
-    final gps = payload['gps'] as Map?;
-    final velocityMap = payload['velocity'] as Map?;
+    // Add chunk to buffer
+    _jsonBufferHelper.addChunk(rawData);
     
-    if (gps != null) {
-      print('=== GPS DATA ===');
-      gps.forEach((key, value) {
-        print('  gps.$key: $value (type: ${value.runtimeType})');
-      });
-    }
+    // Try to extract complete JSONs
+    final completeJsons = _jsonBufferHelper.extractCompleteJsons();
     
-    if (imu != null) {
-      print('=== IMU DATA ===');
-      imu.forEach((key, value) {
-        print('  imu.$key: $value (type: ${value.runtimeType})');
-      });
-    }
-
-    // Safe parsing function
-    double? parseDouble(dynamic value) {
-      if (value == null) return null;
-      if (value is num) return value.toDouble();
-      if (value is String) {
-        print('⚠️ Converting string to double: "$value"');
-        return double.tryParse(value);
-      }
+    if (completeJsons.isNotEmpty) {
+      // Process the first complete JSON
+      final jsonData = completeJsons.first;
+      return _parseTelemetryFromJson(jsonData);
+    } else {
+      print('⏳ No complete JSON yet, buffer: ${_jsonBufferHelper.bufferLength} chars');
       return null;
     }
-
-    int? parseInt(dynamic value) {
-      if (value == null) return null;
-      if (value is num) return value.toInt();
-      if (value is String) {
-        print('⚠️ Converting string to int: "$value"');
-        return int.tryParse(value);
-      }
-      return null;
-    }
-
-    // Get heart rate from nested map
-    final heartRate = heartMap?['hr'];
-    final velocityValue = velocityMap?['kmh'];
-    
-    // GPS uses 'lng' not 'lon' based on your debug output
-    final gpsLon = gps?['lng'] ?? gps?['lon'];
-
-    final telemetry = Telemetry(
-      // t is "telemetry" string, so use ts or generate packet number
-      t: parseInt(payload['ts']) ?? 0, // Use timestamp as packet number
-      ts: parseInt(payload['ts']) ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      helmetOn: payload['helmet_on'] == true,
-      heart: parseInt(heartRate), // Get from nested heart.hr
-      lat: parseDouble(gps?['lat']) ?? 0.0,
-      lon: parseDouble(gpsLon) ?? 0.0, // Use 'lng' field
-      ax: parseDouble(imu?['ax']), // IMU uses 'ax', 'ay', 'az' (not 'x', 'y', 'z')
-      ay: parseDouble(imu?['ay']),
-      az: parseDouble(imu?['az']),
-      velocity: parseDouble(velocityValue), // Get from velocity.kmh
-    );
-
-    print('✅ Telemetry parsed successfully');
-    print('  Packet #: ${telemetry.t}');
-    print('  Timestamp: ${telemetry.ts}');
-    print('  Heart: ${telemetry.heart} bpm');
-    print('  GPS: ${telemetry.lat}, ${telemetry.lon}');
-    print('  Velocity: ${telemetry.velocity} km/h');
-    print('  IMU: ax=${telemetry.ax}, ay=${telemetry.ay}, az=${telemetry.az}');
-    
-    return telemetry;
   } catch (e, s) {
-    print('❌ Telemetry parse crash: $e');
-    print('Stack trace: $s');
+    print('❌ Telemetry parse error: $e');
+    print(s);
     return null;
   }
 }
+
+Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
+  try {
+    // Get Firebase UID
+    final auth = FirebaseAuth.instance;
+    final user = auth.currentUser;
+    final uid = user?.uid;
+
+    // Use actual device_id from ESP32
+    final deviceIdFromJson = jsonData['device_id'] as String? ?? 'HELMET_001';
+    
+    // Create enhanced payload
+    final enhancedPayload = Map<String, dynamic>.from(jsonData);
+    enhancedPayload['device_id'] = deviceIdFromJson;
+    enhancedPayload['user_id'] = uid ?? 'unknown_user';
+    enhancedPayload['parsed_at'] = DateTime.now().millisecondsSinceEpoch;
+
+    // Create Telemetry object
+    final telemetry = Telemetry.fromJson(enhancedPayload);
+
+    // Debug log
+    print('🎯 TELEMETRY PARSED SUCCESSFULLY:');
+    print('  Device: ${telemetry.deviceId}');
+    print('  Helmet: ${telemetry.helmetOn ? "✅ ON" : "❌ OFF"}');
+    
+    if (telemetry.heartRate?.ok == true) {
+      print('  ❤️  HR: ${telemetry.heart} BPM, SpO2: ${telemetry.spo2}%');
+      print('  👆 Finger: ${telemetry.fingerDetected ? "Detected" : "Not detected"}');
+    } else {
+      print('  ❗ Heart rate sensor: ${telemetry.heartRate?.ok == false ? "ERROR" : "No data"}');
+    }
+    
+    print('  📍 GPS: ${telemetry.lat}, ${telemetry.lon} (${telemetry.gpsLock ? "🔒 LOCKED" : "🔓 No lock"})');
+    print('  🚀 Speed: ${telemetry.speed ?? 0} km/h');
+    
+    if (telemetry.imu?.ok == true) {
+      print('  📊 IMU: X=${telemetry.ax?.toStringAsFixed(2)}, Y=${telemetry.ay?.toStringAsFixed(2)}, Z=${telemetry.az?.toStringAsFixed(2)}');
+    }
+
+    return telemetry;
+  } catch (e, s) {
+    print('❌ Error parsing telemetry from JSON: $e');
+    print('❌ JSON data: $jsonData');
+    print(s);
+    return null;
+  }
+}
+
+// Helper to clear buffer when disconnecting
+void clearJsonBuffer() {
+  _jsonBufferHelper.clear();
+}
+
+String getBufferStatus() {
+  return 'Buffer: ${_jsonBufferHelper.bufferLength} chars';
+}
+
+int min(int a, int b) => a < b ? a : b;

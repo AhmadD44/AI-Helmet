@@ -1,13 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:bluetooth_classic/bluetooth_classic.dart';
 import 'package:bluetooth_classic/models/device.dart';
-import 'package:msgpack_dart/msgpack_dart.dart' as mp;
 
 class EspBtClassicSource {
   final bool debugLog;
-  EspBtClassicSource({this.debugLog = false});
+  EspBtClassicSource({this.debugLog = true}); // Set to true for debugging
 
   final BluetoothClassic _bt = BluetoothClassic();
 
@@ -15,35 +15,33 @@ class EspBtClassicSource {
   Stream<Map<String, dynamic>> get stream => _controller.stream;
 
   StreamSubscription<List<int>>? _rxSub;
-  final BytesBuilder _buffer = BytesBuilder(copy: false);
+  
+  // Buffer for incoming string data
+  String _messageBuffer = '';
 
   bool _connected = false;
   bool _connecting = false;
   String? _mac;
 
-  // Auto-reconnection variables
-  Timer? _reconnectTimer;
-  Timer? _connectionMonitorTimer;
-  bool _autoReconnect = false;
-  int _reconnectAttempts = 0;
-  static const int maxReconnectAttempts = 5;
-  static const Duration reconnectDelay = Duration(seconds: 3);
-  static const Duration connectionCheckInterval = Duration(seconds: 5);
-  
-  // Last data received time
-  DateTime? _lastDataReceived;
-
   // ===== SCAN =====
 
   Future<void> initPermissions() async {
-    await _bt.initPermissions();
+    try {
+      await _bt.initPermissions();
+    } catch (e) {
+      print("❌ Permission error: $e");
+    }
   }
 
   Stream<Device> onDeviceDiscovered() => _bt.onDeviceDiscovered();
 
   Future<void> startScan() async {
     await initPermissions();
-    await _bt.startScan();
+    try {
+      await _bt.startScan();
+    } catch (e) {
+      print("❌ Scan error: $e");
+    }
   }
 
   Future<void> stopScan() async {
@@ -55,199 +53,196 @@ class EspBtClassicSource {
   // ===== CONNECT / RX =====
 
   Future<void> connect(String mac) async {
-    if (_connected && _mac == mac) return;
-    if (_connecting) return;
+    print("🔄 CONNECT called for MAC: $mac");
+    
+    if (_connected && _mac == mac) {
+      print("ℹ️ Already connected to this device");
+      return;
+    }
+    
+    if (_connecting) {
+      print("ℹ️ Already connecting");
+      return;
+    }
     
     _connecting = true;
-    _autoReconnect = true; // Enable auto-reconnect
     _mac = mac;
 
     try {
+      // Clean up any existing connection first
       await _cleanupConnection();
 
-      if (debugLog) {
-        print("Connecting to $mac ...");
-      }
+      print("🔗 Step 1: Initiating connection to $mac");
 
+      // ESP32 SPP UUID - THIS IS CRITICAL
       const sppUuid = "00001101-0000-1000-8000-00805F9B34FB";
+      
+      print("🔗 Step 2: Using SPP UUID: $sppUuid");
 
-      final ok = await _bt.connect(mac, sppUuid);
+      // Try connection with timeout
+      final ok = await _bt.connect(mac, sppUuid).timeout(
+        const Duration(seconds: 15), // Increased timeout to 15s
+        onTimeout: () {
+          print("⏰ Connection timeout after 15 seconds");
+          return false;
+        },
+      );
+      
       if (!ok) {
         throw Exception("connect() returned false");
       }
 
+      print("✅ Step 3: Bluetooth connected successfully");
+      
+      // Wait a moment for connection to stabilize
+      await Future.delayed(const Duration(milliseconds: 500));
+      
       _connected = true;
-      _reconnectAttempts = 0; // Reset on successful connection
-      _lastDataReceived = DateTime.now();
 
-      if (debugLog) {
-        print("Connected ✅");
-      }
+      print("📡 Step 4: Setting up data stream listener");
 
-      // Start connection monitoring
-      _startConnectionMonitoring();
-
-      // RX stream
+      // Setup RX stream
       await _rxSub?.cancel();
 
       _rxSub = _bt.onDeviceDataReceived().listen(
         (bytes) {
-          _lastDataReceived = DateTime.now(); // Update last data time
           _onBytes(Uint8List.fromList(bytes));
         },
         onError: (e) {
-          if (debugLog) {
-            print("❌ Bluetooth stream error: $e");
+          print("❌ Bluetooth stream error: $e");
+          print("⚠️ Stream error type: ${e.runtimeType}");
+          if (e is! TimeoutException) {
+            _handleDisconnection("Stream error: $e");
           }
-          _handleDisconnection();
         },
         onDone: () {
-          if (debugLog) {
-            print("🔌 Bluetooth stream closed");
-          }
-          _handleDisconnection();
+          print("🔌 Bluetooth stream closed (onDone callback)");
+          _handleDisconnection("Stream closed");
         },
-        cancelOnError: true,
+        cancelOnError: false,
       );
 
+      print("🎯 Step 5: Connection setup complete - Ready for data");
+      
+    } on TimeoutException catch (e) {
+      print("⏰ Connection timeout: $e");
+      _handleDisconnection("Connection timeout");
+      rethrow;
     } catch (e) {
-      if (debugLog) {
-        print("❌ Connection failed: $e");
-      }
-      _handleDisconnection();
+      print("❌ Connection failed with error: $e");
+      print("❌ Error type: ${e.runtimeType}");
+      print("❌ Stack trace: ${e.toString()}");
+      _handleDisconnection("Connection error: $e");
       rethrow;
     } finally {
       _connecting = false;
     }
   }
 
-  void _startConnectionMonitoring() {
-    _connectionMonitorTimer?.cancel();
-    _connectionMonitorTimer = Timer.periodic(connectionCheckInterval, (timer) {
-      // Check if we haven't received data for a while (connection might be dead)
-      if (_lastDataReceived != null && 
-          DateTime.now().difference(_lastDataReceived!) > Duration(seconds: 10) &&
-          _connected) {
-        
-        if (debugLog) {
-          print("⚠️ No data received for 10 seconds, connection may be dead");
-        }
-        _handleDisconnection();
-      }
-    });
-  }
-
   void _onBytes(Uint8List bytes) {
     if (bytes.isEmpty) return;
 
-    if (debugLog) {
-      print("RX bytes: ${bytes.length}");
+    try {
+      // 1. Decode bytes to string
+      final incomingStr = utf8.decode(bytes, allowMalformed: true);
+      
+      if (debugLog) {
+        print("📥 RX: $incomingStr");
+      }
+
+      // 2. Add to buffer
+      _messageBuffer += incomingStr;
+
+      // 3. Process buffer for complete JSON objects
+      _processBuffer();
+
+    } catch (e) {
+      print("❌ Error processing bytes: $e");
     }
+  }
 
-    _buffer.add(bytes);
-
+  void _processBuffer() {
+    // Simple JSON extraction logic: look for matching braces
+    // This handles cases where multiple JSONs arrive at once, or one JSON arrives in pieces
+    
     while (true) {
-      final data = _buffer.toBytes();
-      if (data.isEmpty) return;
-
-      try {
-        final obj = mp.deserialize(data);
-
-        _buffer.clear();
-
-        final map = _normalizeToMap(obj);
-        if (map != null) {
-          if (debugLog) {
-            print("Decoded keys: ${map.keys.toList()}");
-          }
-          _controller.add(map);
-        } else {
-          if (debugLog) {
-            print("Decoded but not Map: ${obj.runtimeType}");
-          }
-        }
-
+      final start = _messageBuffer.indexOf('{');
+      if (start == -1) {
+        // No start brace, clear garbage if buffer gets too big
+        if (_messageBuffer.length > 1000) _messageBuffer = '';
         return;
-      } catch (e) {
-        if (data.length > 1024 * 1024) {
-          _buffer.clear();
-          if (debugLog) {
-            print("Buffer overflow: cleared");
+      }
+
+      // We have a start brace. Now try to find the matching end brace.
+      // This is a naive implementation that assumes no nested braces inside strings.
+      // For robust parsing, we'd need a proper parser, but this works for standard telemetry.
+      
+      int braceCount = 0;
+      int end = -1;
+      
+      for (int i = start; i < _messageBuffer.length; i++) {
+        if (_messageBuffer[i] == '{') braceCount++;
+        if (_messageBuffer[i] == '}') braceCount--;
+        
+        if (braceCount == 0) {
+          end = i;
+          break;
+        }
+      }
+
+      if (end != -1) {
+        // We found a complete JSON object string
+        final jsonStr = _messageBuffer.substring(start, end + 1);
+        
+        // Remove processed part from buffer
+        _messageBuffer = _messageBuffer.substring(end + 1);
+        
+        try {
+          final dynamic decoded = jsonDecode(jsonStr);
+          final map = _normalizeToMap(decoded);
+          
+          if (map != null) {
+            if (debugLog) print("✅ Decoded JSON: $map");
+            _controller.add(map);
           }
+        } catch (e) {
+          print("⚠️ JSON parse error for substring: $e");
+          // Just continue, maybe the next one is good
+        }
+      } else {
+        // Incomplete JSON, wait for more data
+        // Safety check: if buffer is huge and we still don't have a valid JSON, clear it
+        if (_messageBuffer.length > 5000) {
+          print("⚠️ Buffer too large with no valid JSON, clearing");
+          _messageBuffer = '';
         }
         return;
       }
     }
   }
 
-  void _handleDisconnection() {
-    if (!_connected && !_connecting) return;
+  void _handleDisconnection(String reason) {
+    print("🔌 Handling disconnection: $reason");
+    
+    if (!_connected && !_connecting) {
+      return;
+    }
     
     _connected = false;
     
-    if (debugLog) {
-      print("🔌 Connection lost or device disconnected");
-    }
-    
-    // Stop connection monitoring
-    _connectionMonitorTimer?.cancel();
-    _connectionMonitorTimer = null;
+    print("🚫 Connection lost: $reason");
     
     // Notify listeners
-    _controller.addError("Device disconnected");
+    _controller.addError(reason);
     
-    // Clean up current connection
+    // Clean up
     _cleanupConnection();
-    
-    // Attempt auto-reconnect if enabled
-    if (_autoReconnect && _mac != null && _reconnectAttempts < maxReconnectAttempts) {
-      _scheduleReconnect();
-    }
-  }
-
-  void _scheduleReconnect() {
-    _reconnectTimer?.cancel();
-    
-    _reconnectAttempts++;
-    if (debugLog) {
-      print("🔄 Scheduling reconnect attempt $_reconnectAttempts/$maxReconnectAttempts in ${reconnectDelay.inSeconds}s");
-    }
-    
-    _reconnectTimer = Timer(reconnectDelay, () async {
-      if (_autoReconnect && !_connected && _mac != null && _reconnectAttempts <= maxReconnectAttempts) {
-        try {
-          if (debugLog) {
-            print("🔄 Attempting reconnect...");
-          }
-          await connect(_mac!);
-        } catch (e) {
-          if (debugLog) {
-            print("❌ Reconnect failed: $e");
-          }
-          // Will automatically schedule another attempt if under limit
-          if (_reconnectAttempts < maxReconnectAttempts) {
-            _scheduleReconnect();
-          }
-        }
-      } else if (_reconnectAttempts >= maxReconnectAttempts) {
-        if (debugLog) {
-          print("❌ Max reconnect attempts reached ($maxReconnectAttempts)");
-        }
-      }
-    });
   }
 
   Future<void> _cleanupConnection() async {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    
-    _connectionMonitorTimer?.cancel();
-    _connectionMonitorTimer = null;
-    
     await _rxSub?.cancel();
     _rxSub = null;
-    
-    _buffer.clear();
+    _messageBuffer = '';
   }
 
   Map<String, dynamic>? _normalizeToMap(dynamic obj) {
@@ -259,26 +254,30 @@ class EspBtClassicSource {
   }
 
   Future<void> disconnect() async {
-    _autoReconnect = false; // Disable auto-reconnect when manually disconnecting
+    print("👋 Manual disconnect requested");
+    
     await _cleanupConnection();
     
     try {
       await _bt.disconnect();
-    } catch (_) {}
+      print("✅ Bluetooth disconnected");
+    } catch (e) {
+      print("⚠️ Error during disconnect: $e");
+    }
 
     _connected = false;
     _mac = null;
-    _reconnectAttempts = 0;
-    _lastDataReceived = null;
+    _connecting = false;
   }
 
   Future<void> dispose() async {
-    _autoReconnect = false;
+    print("♻️ Disposing Bluetooth source");
     await disconnect();
     await _controller.close();
+    print("♻️ Bluetooth source disposed");
   }
   
   bool get isConnected => _connected;
   String? get currentMac => _mac;
-  int get reconnectAttempts => _reconnectAttempts;
+  bool get isConnecting => _connecting;
 }

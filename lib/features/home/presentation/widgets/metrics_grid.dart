@@ -11,14 +11,21 @@ class MetricsGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = telemetry;
 
-    // 1. Heart Rate
-    final hr = t?.heart;
+    // 1. Heart Rate & SpO2
+    final heartRate = t?.heartRate;
+    final hr = heartRate?.hr;
     final hrValue = hr == null ? '--' : '$hr bpm';
+    final spo2 = heartRate?.spo2;
+    final spo2Value = spo2 == null ? '--' : '$spo2%';
+    final fingerDetected = heartRate?.finger ?? false;
     
     // 2. GPS Coordinates
-    final gpsValue = t == null
+    final gps = t?.gps;
+    final gpsValue = gps == null
         ? '--'
-        : '${t.lat.toStringAsFixed(6)}\n${t.lon.toStringAsFixed(6)}';
+        : '${t?.lat.toStringAsFixed(6)}\n${t?.lon.toStringAsFixed(6)}';
+    final gpsLock = gps?.lock ?? false;
+    final satellites = gps?.sats ?? 0;
 
     // 3. Helmet Status
     final helmetOn = t?.helmetOn ?? false;
@@ -26,7 +33,7 @@ class MetricsGrid extends StatelessWidget {
     final helmetColor = helmetOn ? Colors.green : Colors.orange;
 
     // 4. Velocity/Speed
-    final velocity = t?.velocity;
+    final velocity = t?.speed; // Using the getter
     final speedValue = velocity == null 
         ? '-- km/h' 
         : '${velocity.toStringAsFixed(1)} km/h';
@@ -39,11 +46,16 @@ class MetricsGrid extends StatelessWidget {
         'Y: ${t?.ay?.toStringAsFixed(2) ?? '--'} m/s²\n'
         'Z: ${t?.az?.toStringAsFixed(2) ?? '--'} m/s²';
 
-    // 6. Packet Info & Timestamp
-    final packetValue = t == null 
-        ? '--' 
-        : 'Packet #${t.t}\n'
-          '${_formatTimestamp(t.ts)}';
+    // 6. Gyroscope
+    final gyroDetails = t?.imu?.ok == true
+        ? 'X: ${t?.gx?.toStringAsFixed(2) ?? '--'}°/s\n'
+          'Y: ${t?.gy?.toStringAsFixed(2) ?? '--'}°/s\n'
+          'Z: ${t?.gz?.toStringAsFixed(2) ?? '--'}°/s'
+        : 'No gyro data';
+
+    // 7. Device Info & Timestamp
+    final deviceId = t?.deviceId ?? '--';
+    final timestamp = _formatTimestamp(t?.ts ?? 0);
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -61,16 +73,52 @@ class MetricsGrid extends StatelessWidget {
             title: 'Heart Rate',
             value: hrValue,
             iconColor: Colors.red[400]!,
-            subtitle: hr != null ? 'Live' : 'No data',
+            subtitle: fingerDetected ? 'Finger detected' : 'No finger',
+            badge: spo2 != null 
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getSpo2Color(spo2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'SpO2: $spo2%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                : null,
           ),
 
           // Card 2: GPS
           _Card(
-            icon: Icons.gps_fixed,
+            icon: gpsLock ? Icons.gps_fixed : Icons.gps_off,
             title: 'GPS',
             value: gpsValue,
-            iconColor: Colors.blue[400]!,
-            subtitle: t != null ? 'Active' : '--',
+            iconColor: gpsLock ? Colors.green[400]! : Colors.grey[400]!,
+            subtitle: gpsLock 
+                ? '${satellites} satellites'
+                : 'No signal',
+            badge: gpsLock
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'LOCKED',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                : null,
           ),
 
           // Card 3: Helmet Status
@@ -80,7 +128,26 @@ class MetricsGrid extends StatelessWidget {
             value: helmetValue,
             iconColor: helmetColor,
             valueColor: helmetColor,
-            subtitle: helmetOn ? 'Worn' : 'Not worn',
+            subtitle: helmetOn ? 'Worn properly' : 'Not worn',
+            badge: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: helmetOn ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: helmetOn ? Colors.green : Colors.orange,
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                helmetOn ? 'SAFE' : 'WARNING',
+                style: TextStyle(
+                  color: helmetOn ? Colors.green : Colors.orange,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
           ),
 
           // Card 4: Speed
@@ -88,8 +155,29 @@ class MetricsGrid extends StatelessWidget {
             icon: Icons.speed_outlined,
             title: 'Speed',
             value: speedValue,
-            iconColor: Colors.purple[300]!,
-            subtitle: velocity != null ? 'Moving' : 'Stopped',
+            iconColor: velocity != null && velocity > 0 
+                ? Colors.purple[300]! 
+                : Colors.grey[400]!,
+            subtitle: velocity != null && velocity > 0 
+                ? 'Moving' 
+                : 'Stopped',
+            badge: velocity != null && velocity > 10
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'FAST',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  )
+                : null,
           ),
 
           // Card 5: Accelerometer
@@ -98,16 +186,34 @@ class MetricsGrid extends StatelessWidget {
             title: 'Acceleration',
             value: accelDetails,
             iconColor: Colors.green[400]!,
-            subtitle: '3-axis',
+            subtitle: 'G-Force: $gForceValue g',
           ),
 
-          // Card 6: Packet Info
+          // Card 6: Gyroscope
           _Card(
-            icon: Icons.info_outline,
-            title: 'Packet Info',
-            value: packetValue,
+            icon: Icons.cached,
+            title: 'Gyroscope',
+            value: gyroDetails,
+            iconColor: Colors.blue[400]!,
+            subtitle: 'Rotation rate',
+          ),
+
+          // Card 7: Device Info
+          _Card(
+            icon: Icons.device_hub,
+            title: 'Device',
+            value: deviceId,
             iconColor: Colors.amber[400]!,
-            subtitle: t != null ? 'Latest' : '--',
+            subtitle: 'Helmet ID',
+          ),
+
+          // Card 8: Last Update
+          _Card(
+            icon: Icons.access_time,
+            title: 'Last Update',
+            value: timestamp,
+            iconColor: Colors.cyan[400]!,
+            subtitle: 'Time received',
           ),
         ],
       ),
@@ -131,8 +237,15 @@ class MetricsGrid extends StatelessWidget {
              '${date.minute.toString().padLeft(2, '0')}:'
              '${date.second.toString().padLeft(2, '0')}';
     } catch (e) {
-      return 'Invalid time';
+      return '${DateTime.now().hour}:${DateTime.now().minute}:${DateTime.now().second}';
     }
+  }
+
+  // Helper to get SpO2 color based on value
+  Color _getSpo2Color(int spo2) {
+    if (spo2 >= 95) return Colors.green;
+    if (spo2 >= 90) return Colors.orange;
+    return Colors.red;
   }
 }
 
@@ -143,6 +256,7 @@ class _Card extends StatelessWidget {
   final Color iconColor;
   final Color valueColor;
   final String? subtitle;
+  final Widget? badge;
 
   const _Card({
     required this.icon,
@@ -151,6 +265,7 @@ class _Card extends StatelessWidget {
     this.iconColor = Colors.white,
     this.valueColor = Colors.white,
     this.subtitle,
+    this.badge,
   });
 
   @override
@@ -173,7 +288,7 @@ class _Card extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top row: Icon + Title
+          // Top row: Icon + Title + Badge
           Row(
             children: [
               Icon(icon, color: iconColor, size: 20),
@@ -188,6 +303,7 @@ class _Card extends StatelessWidget {
                   ),
                 ),
               ),
+              if (badge != null) badge!,
             ],
           ),
           

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class BackendAuthApi {
-  final String baseUrl; // e.g. http://192.168.1.10:8000
+  final String baseUrl; 
   BackendAuthApi(this.baseUrl);
 
   Future<void> ensureUserAndDevice({

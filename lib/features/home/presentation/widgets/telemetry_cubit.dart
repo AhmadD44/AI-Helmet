@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
+import 'package:isd/core/errors/flutter_bl_handler.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:isd/features/home/data/esp_classic_bt_msgpack_source.dart';
 import 'package:isd/features/home/data/ingest_ws_client.dart';
-import 'package:isd/features/home/data/telemetry_forwarder.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 
 class TelemetryState extends Equatable {
@@ -62,10 +65,12 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   final IngestWsClient ingest;
 
   StreamSubscription<Map<String, dynamic>>? _sub;
-  StreamSubscription<void>? _errorSub;
   bool _starting = false;
   String? _mac;
   int _packetsSent = 0;
+  
+  // JSON Buffer for handling split data
+  final _jsonBufferHelper = JsonBufferHelper();
 
   // Connection monitoring
   Timer? _healthTimer;
@@ -80,76 +85,194 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     if (_starting) return;
     _starting = true;
     _mac = mac;
-
+    _jsonBufferHelper.clear();
+    
+    // Step 1: Checking permissions
     emit(TelemetryState(
       loading: true,
       data: state.data,
       error: null,
       connected: false,
-      connectionStatus: "Connecting...",
+      connectionStatus: "Checking permissions...",
     ));
-
-    // Connect WebSocket in background
-    _connectWebSocketInBackground();
-
-    try {
-      // Connect to Bluetooth with timeout
-      await source.connect(mac).timeout(const Duration(seconds: 15));
-      
-      // Start listening to stream
-      await _setupStreamListeners();
-      
-      // Start health monitoring
-      _startHealthMonitoring();
-      
+    
+    final hasPermissions = await _checkBluetoothPermissions();
+    if (!hasPermissions) {
       emit(TelemetryState(
         loading: false,
-        error: null,
-        data: state.data,
-        connected: true,
-        wsConnected: state.wsConnected,
-        connectionStatus: "Connected",
-      ));
-      
-    } on TimeoutException {
-      emit(TelemetryState(
-        loading: false,
-        error: "Connection timeout",
+        error: "Bluetooth permissions required. Please grant permissions in app settings.",
         data: state.data,
         connected: false,
-        connectionStatus: "Timeout",
+        connectionStatus: "Permissions needed",
       ));
-    } catch (e) {
-      emit(TelemetryState(
-        loading: false,
-        error: "Connection failed: $e",
-        data: state.data,
-        connected: false,
-        connectionStatus: "Failed",
-      ));
-    } finally {
       _starting = false;
+      return;
     }
+
+    // Try to connect with retry logic
+    bool connected = false;
+    int retryCount = 0;
+    const int maxRetries = 2;
+    
+    while (!connected && retryCount < maxRetries) {
+      try {
+        emit(state.copyWith(
+          connectionStatus: retryCount == 0 
+              ? "Connecting to device..." 
+              : "Retrying connection... (${retryCount + 1}/$maxRetries)",
+        ));
+
+        // Connect WebSocket in background
+        _connectWebSocketInBackground();
+
+        // Connect to Bluetooth with timeout
+        await source.connect(mac).timeout(const Duration(seconds: 15));
+        
+        // Step 3: Setting up stream
+        emit(state.copyWith(
+          connectionStatus: "Setting up connection...",
+        ));
+        
+        // Start listening to stream
+        await _setupStreamListener();
+        
+        // Start health monitoring
+        _startHealthMonitoring();
+        
+        // Step 4: Connected
+        connected = true;
+        emit(TelemetryState(
+          loading: false,
+          error: null,
+          data: state.data,
+          connected: true,
+          wsConnected: state.wsConnected,
+          connectionStatus: "Connected",
+        ));
+        
+      } on TimeoutException {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        
+        emit(TelemetryState(
+          loading: false,
+          error: "Connection timeout. Please ensure:\n• Device is powered on\n• Device is in pairing mode\n• You're within range (10m)",
+          data: state.data,
+          connected: false,
+          connectionStatus: "Timeout",
+        ));
+        _scheduleReconnect();
+        
+      } on Exception catch (e) {
+        retryCount++;
+        
+        final errorMessage = _parseConnectionError(e);
+        
+        if (retryCount < maxRetries) {
+          print("⚠️ Connection failed, retrying... ($retryCount/$maxRetries)");
+          await Future.delayed(const Duration(seconds: 2));
+          continue;
+        }
+        
+        emit(TelemetryState(
+          loading: false,
+          error: errorMessage,
+          data: state.data,
+          connected: false,
+          connectionStatus: "Failed",
+        ));
+        
+        // Don't auto-retry on certain errors
+        if (!errorMessage.contains("paired") && 
+            !errorMessage.contains("permission") &&
+            !errorMessage.contains("not found")) {
+          _scheduleReconnect();
+        }
+      }
+    }
+    
+    _starting = false;
   }
 
-  Future<void> _setupStreamListeners() async {
-    await _sub?.cancel();
-    await _errorSub?.cancel();
+  String _parseConnectionError(Exception e) {
+    final errorStr = e.toString();
+    print('🔍 Connection error: $errorStr');
+    
+    if (errorStr.contains("connection_failed") || errorStr.contains("could not connect")) {
+      return "Failed to connect to device. Please ensure:\n"
+             "1. Device is powered on\n"
+             "2. Device is paired in Android Bluetooth settings\n"
+             "3. You're within range (10 meters)\n"
+             "4. Device isn't connected to another phone";
+    }
+    
+    if (errorStr.contains("bluetooth_disabled")) {
+      return "Bluetooth is disabled. Please enable Bluetooth in device settings.";
+    }
+    
+    if (errorStr.contains("permission") || errorStr.contains("denied")) {
+      return "Bluetooth permission denied. Please grant permissions in app settings.";
+    }
+    
+    if (errorStr.contains("device_not_found") || errorStr.contains("not found")) {
+      return "Device not found. It may be out of range or turned off.";
+    }
+    
+    if (errorStr.contains("already_connected")) {
+      return "Already connected to this device.";
+    }
+    
+    return "Connection failed. Please try again.";
+  }
 
-    // Listen for telemetry data
+  Future<bool> _checkBluetoothPermissions() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        // Request all necessary permissions
+        final permissions = await [
+          Permission.locationWhenInUse,
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+        ].request();
+        
+        // Check if all are granted
+        return permissions[Permission.locationWhenInUse]?.isGranted == true &&
+               permissions[Permission.bluetoothScan]?.isGranted == true &&
+               permissions[Permission.bluetoothConnect]?.isGranted == true;
+      } catch (e) {
+        print('⚠️ Permission check error: $e');
+        return false;
+      }
+    }
+    return true; // For iOS
+  }
+
+  Future<void> _setupStreamListener() async {
+    await _sub?.cancel();
+
     _sub = source.stream.listen(
       (payload) async {
         _lastDataTime = DateTime.now();
         
-        // Send to WebSocket
-        _sendToWebSocket(payload);
+        Telemetry? telemetry;
         
-        // Parse telemetry
-        final t = parseTelemetry(payload);
+        if (payload is String) {
+          // Handle raw string data with buffer
+          telemetry = _parseTelemetryFromString(payload as String);
+        } else if (payload is Map<String, dynamic>) {
+          // Already parsed data
+          telemetry = _parseTelemetryFromMap(payload);
+          
+          // Send to WebSocket
+          _sendToWebSocket(payload);
+        }
         
-        if (t != null) {
+        if (telemetry != null) {
           emit(state.copyWith(
-            data: t,
+            data: telemetry,
             error: null,
             connected: true,
             connectionStatus: "Receiving data",
@@ -158,22 +281,80 @@ class TelemetryCubit extends Cubit<TelemetryState> {
       },
       onError: (error) {
         print("❌ Telemetry stream error: $error");
-        if (error.toString().contains("disconnected")) {
-          emit(state.copyWith(
-            connected: false,
-            connectionStatus: "Disconnected",
-          ));
-          
-          // Try to reconnect after delay
-          _scheduleReconnect();
-        }
+        _handleStreamError(error);
+      },
+      onDone: () {
+        print("ℹ️ Telemetry stream closed");
+        _handleStreamClosed();
       },
     );
+  }
 
-    // Listen for errors from source
-    _errorSub = source.stream.asBroadcastStream().handleError((error) {
-      print("❌ Source error: $error");
-    }) as StreamSubscription<void>?;
+  Telemetry? _parseTelemetryFromString(String rawData) {
+    try {
+      // Add chunk to buffer
+      _jsonBufferHelper.addChunk(rawData);
+      
+      // Try to extract complete JSONs
+      final completeJsons = _jsonBufferHelper.extractCompleteJsons();
+      
+      if (completeJsons.isNotEmpty) {
+        // Process the first complete JSON
+        final jsonData = completeJsons.first;
+        return _parseTelemetryFromMap(jsonData);
+      } else {
+        print('⏳ No complete JSON yet, buffer: ${_jsonBufferHelper.bufferLength} chars');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error parsing string to telemetry: $e');
+      return null;
+    }
+  }
+
+  Telemetry? _parseTelemetryFromMap(Map<String, dynamic> payload) {
+    try {
+      // Use device_id from JSON
+      final deviceIdFromJson = payload['device_id'] as String? ?? 'HELMET_001';
+      
+      // Create enhanced payload
+      final enhancedPayload = Map<String, dynamic>.from(payload);
+      enhancedPayload['device_id'] = deviceIdFromJson;
+      
+      // Create Telemetry object
+      final telemetry = Telemetry.fromJson(enhancedPayload);
+
+      return telemetry;
+    } catch (e) {
+      print('❌ Error parsing map to telemetry: $e');
+      return null;
+    }
+  }
+
+  void _handleStreamError(error) {
+    if (error.toString().contains("disconnected") ||
+        error.toString().contains("connection")) {
+      emit(state.copyWith(
+        connected: false,
+        connectionStatus: "Disconnected",
+        error: "Lost connection to device",
+      ));
+      
+      _jsonBufferHelper.clear(); // Clear buffer on disconnect
+      _scheduleReconnect();
+    }
+  }
+
+  void _handleStreamClosed() {
+    if (state.connected) {
+      emit(state.copyWith(
+        connected: false,
+        connectionStatus: "Connection closed",
+        error: "Connection closed unexpectedly",
+      ));
+      _jsonBufferHelper.clear();
+      _scheduleReconnect();
+    }
   }
 
   Future<void> _connectWebSocketInBackground() async {
@@ -220,23 +401,22 @@ class TelemetryCubit extends Cubit<TelemetryState> {
           DateTime.now().difference(_lastDataTime!) > dataTimeout &&
           state.connected) {
         
-        print("⚠️ No data for ${dataTimeout.inSeconds} seconds");
+        print("⚠️ No data for ${dataTimeout.inSeconds} seconds (Connection kept alive)");
         
-        emit(state.copyWith(
-          connected: false,
-          connectionStatus: "Connection lost - No data",
-        ));
-        
-        _scheduleReconnect();
+        if (state.connectionStatus != "Connected (Idle)") {
+           emit(state.copyWith(
+            connectionStatus: "Connected (Idle)",
+          ));
+        }
       }
     });
   }
 
   void _scheduleReconnect() {
-    // Wait 2 seconds then try to reconnect
-    Future.delayed(const Duration(seconds: 2), () {
+    // Wait 5 seconds then try to reconnect
+    Future.delayed(const Duration(seconds: 5), () {
       if (_mac != null && !_starting && !state.connected) {
-        print("🔄 Attempting auto-reconnect...");
+        print("🔄 Attempting auto-reconnect to $_mac...");
         startWithMac(_mac!);
       }
     });
@@ -249,8 +429,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     await _sub?.cancel();
     _sub = null;
     
-    await _errorSub?.cancel();
-    _errorSub = null;
+    _jsonBufferHelper.clear(); // Clear buffer on disconnect
     
     try {
       await source.disconnect();
@@ -271,6 +450,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     }
   }
 
+  String get bufferStatus => 'Buffer: ${_jsonBufferHelper.bufferLength} chars';
   String? get currentMac => _mac;
   int get packetsSent => _packetsSent;
   bool get isWsConnected => state.wsConnected;
@@ -279,7 +459,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   Future<void> close() async {
     _healthTimer?.cancel();
     await _sub?.cancel();
-    await _errorSub?.cancel();
+    _jsonBufferHelper.clear();
     await source.dispose();
     await ingest.close();
     return super.close();
