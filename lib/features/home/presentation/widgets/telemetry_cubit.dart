@@ -292,20 +292,49 @@ class TelemetryCubit extends Cubit<TelemetryState> {
 
   Telemetry? _parseTelemetryFromString(String rawData) {
     try {
+      print('📥 Raw data to parse: ${rawData.length} chars');
+      
+      // Clean the raw data first
+      String cleanedData = rawData
+          .replaceAll('\x00', '')
+          .replaceAll('\r', '')
+          .trim();
+      
+      // If it starts with something other than '{', try to find JSON
+      if (!cleanedData.startsWith('{')) {
+        int jsonStart = cleanedData.indexOf('{');
+        if (jsonStart != -1) {
+          cleanedData = cleanedData.substring(jsonStart);
+        }
+      }
+      
       // Add chunk to buffer
-      _jsonBufferHelper.addChunk(rawData);
+      _jsonBufferHelper.addChunk(cleanedData);
       
       // Try to extract complete JSONs
       final completeJsons = _jsonBufferHelper.extractCompleteJsons();
       
       if (completeJsons.isNotEmpty) {
-        // Process the first complete JSON
-        final jsonData = completeJsons.first;
-        return _parseTelemetryFromMap(jsonData);
+        Telemetry? latestTelemetry;
+        
+        // Process all complete JSONs and send to WebSocket
+        for (final jsonData in completeJsons) {
+          // Send to WebSocket
+          _sendToWebSocket(jsonData);
+          
+          // Parse telemetry (use last one for UI)
+          latestTelemetry = _parseTelemetryFromMap(jsonData);
+        }
+        
+        return latestTelemetry;
       } else {
         print('⏳ No complete JSON yet, buffer: ${_jsonBufferHelper.bufferLength} chars');
-        return null;
+        if (_jsonBufferHelper.bufferLength > 0) {
+          print('   Buffer preview: ${_jsonBufferHelper.bufferPreview}');
+        }
       }
+      
+      return null;
     } catch (e) {
       print('❌ Error parsing string to telemetry: $e');
       return null;
@@ -314,21 +343,65 @@ class TelemetryCubit extends Cubit<TelemetryState> {
 
   Telemetry? _parseTelemetryFromMap(Map<String, dynamic> payload) {
     try {
+      // Ensure all numbers are properly typed
+      final convertedPayload = _convertNumbers(payload);
+      
       // Use device_id from JSON
-      final deviceIdFromJson = payload['device_id'] as String? ?? 'HELMET_001';
+      final deviceIdFromJson = convertedPayload['device_id'] as String? ?? 'HELMET_001';
       
       // Create enhanced payload
-      final enhancedPayload = Map<String, dynamic>.from(payload);
+      final enhancedPayload = Map<String, dynamic>.from(convertedPayload);
       enhancedPayload['device_id'] = deviceIdFromJson;
       
       // Create Telemetry object
       final telemetry = Telemetry.fromJson(enhancedPayload);
-
+      
+      // Log successful parsing
+      print('✅ Telemetry parsed: ${telemetry.deviceId}}');
+      
       return telemetry;
     } catch (e) {
       print('❌ Error parsing map to telemetry: $e');
+      print('❌ Payload: $payload');
       return null;
     }
+  }
+
+  dynamic _convertNumbers(dynamic value) {
+    if (value is Map) {
+      final Map<String, dynamic> result = {};
+      value.forEach((key, val) {
+        result[key.toString()] = _convertNumbers(val);
+      });
+      return result;
+    } else if (value is List) {
+      return value.map(_convertNumbers).toList();
+    } else if (value is String) {
+      // Try to convert numeric strings
+      if (_isNumeric(value)) {
+        if (value.contains('.') || value.contains('e') || value.contains('E')) {
+          try {
+            return double.parse(value);
+          } catch (_) {
+            return value;
+          }
+        } else {
+          try {
+            return int.parse(value);
+          } catch (_) {
+            return value;
+          }
+        }
+      }
+      return value;
+    }
+    return value;
+  }
+
+  bool _isNumeric(String str) {
+    if (str.isEmpty) return false;
+    final numericRegex = RegExp(r'^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$');
+    return numericRegex.hasMatch(str);
   }
 
   void _handleStreamError(error) {
@@ -371,28 +444,37 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   }
 
   Future<void> _sendToWebSocket(Map<String, dynamic> payload) async {
-    try {
-      final enhancedPayload = Map<String, dynamic>.from(payload);
-      enhancedPayload['_meta'] = {
-        'device_id': _mac ?? 'unknown',
-        'received_at': DateTime.now().millisecondsSinceEpoch,
-        'packet_number': _packetsSent + 1,
-      };
+  try {
+    final enhancedPayload = Map<String, dynamic>.from(payload);
+    enhancedPayload['_meta'] = {
+      'device_id': _mac ?? 'unknown',
+      'received_at': DateTime.now().millisecondsSinceEpoch,
+      'packet_number': _packetsSent + 1,
+    };
 
-      await ingest.send(enhancedPayload);
-      _packetsSent++;
-      
-      if (_packetsSent % 10 == 0) {
-        emit(state.copyWith(packetsSent: _packetsSent));
-      }
-    } catch (e) {
-      print('⚠️ WebSocket send failed: $e');
-      if (state.wsConnected) {
-        emit(state.copyWith(wsConnected: false));
-        _connectWebSocketInBackground();
-      }
+    // Convert to JSON string for logging
+    final jsonString = jsonEncode(enhancedPayload);
+    
+    // ALWAYS LOG - remove the debugLog check
+    print("📤 Sending to WebSocket: ${jsonString.length} bytes");
+    print("📤 FULL DATA BEING SENT:");
+    print(jsonString);
+    print("📤 END OF DATA");
+
+    await ingest.send(enhancedPayload);
+    _packetsSent++;
+    
+    if (_packetsSent % 10 == 0) {
+      emit(state.copyWith(packetsSent: _packetsSent));
+    }
+  } catch (e) {
+    print('⚠️ WebSocket send failed: $e');
+    if (state.wsConnected) {
+      emit(state.copyWith(wsConnected: false));
+      _connectWebSocketInBackground();
     }
   }
+}
 
   void _startHealthMonitoring() {
     _healthTimer?.cancel();
