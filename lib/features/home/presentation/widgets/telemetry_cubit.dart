@@ -446,11 +446,11 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   Future<void> _sendToWebSocket(Map<String, dynamic> payload) async {
   try {
     final enhancedPayload = Map<String, dynamic>.from(payload);
-    enhancedPayload['_meta'] = {
-      'device_id': _mac ?? 'unknown',
-      'received_at': DateTime.now().millisecondsSinceEpoch,
-      'packet_number': _packetsSent + 1,
-    };
+    // enhancedPayload['_meta'] = {
+    //   'device_id': _mac ?? 'unknown',
+    //   'received_at': DateTime.now().millisecondsSinceEpoch,
+    //   'packet_number': _packetsSent + 1,
+    // };
 
     // Convert to JSON string for logging
     final jsonString = jsonEncode(enhancedPayload);
