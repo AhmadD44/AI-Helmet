@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:isd/features/home/presentation/widgets/risk_indicator.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:permission_handler/permission_handler.dart';
 
@@ -17,6 +18,7 @@ import 'package:isd/features/home/presentation/widgets/map_view.dart';
 import 'package:isd/features/home/presentation/widgets/metrics_grid.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
+import 'package:isd/features/home/presentation/widgets/crash_alert_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final Future<void> Function()? onSignOut;
@@ -33,6 +35,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _tripStarted = false;
   bool _tripCompleted = false;
   final latlng.Distance _distance = latlng.Distance();
+  
+  // Routing
+  List<latlng.LatLng> _routePoints = [];
 
   late final FlutterTts _tts;
   DateTime? _lastVoiceAt;
@@ -43,6 +48,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? _selectedMac;
   bool _connecting = false;
   bool _autoReconnectAttempted = false;
+
+  RiskData? _currentRisk;
+  bool _showingCrashAlert = false;
+  Timer? _crashCountdownTimer;
+  int _crashCountdownSeconds = 10;
+
 
   @override
   void initState() {
@@ -56,6 +67,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _loadSavedMacAndAutoConnect();
   }
 
+  Widget _buildStartTripButton() {
+    if (_destination == null || _tripStarted) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 52),
+          backgroundColor: Colors.blue,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        icon: const Icon(Icons.navigation),
+        label: const Text(
+          "Start Trip",
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        onPressed: () {
+          setState(() {
+            _tripStarted = true;
+            _tripCompleted = false;
+          });
+
+          // Speak route info
+          if (_routePoints.isNotEmpty) {
+            final routeDistance = _calculateRouteDistance(_routePoints);
+            _tts.speak("Trip started. Follow the ${routeDistance.toStringAsFixed(1)} kilometer route.");
+          } else {
+            _tts.speak("Trip started. Follow the route.");
+          }
+        },
+      ),
+    );
+  }
+
+  // Calculate total route distance
+  double _calculateRouteDistance(List<latlng.LatLng> points) {
+    double total = 0.0;
+    
+    for (int i = 0; i < points.length - 1; i++) {
+      total += _distance(points[i], points[i + 1]);
+    }
+    
+    return total / 1000; // Return in kilometers
+  }
+
+  // Find nearest point on route for turn guidance
+  int _findNearestRoutePoint(latlng.LatLng current) {
+    int nearestIndex = 0;
+    double minDistance = double.infinity;
+    
+    for (int i = 0; i < _routePoints.length; i++) {
+      final dist = _distance(current, _routePoints[i]);
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearestIndex = i;
+      }
+    }
+    
+    return nearestIndex;
+  }
+
   Future<void> _loadSavedMacAndAutoConnect() async {
     final mac = await EspPrefs.loadMac();
     if (!mounted) return;
@@ -64,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     if (mac != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await Future.delayed(const Duration(seconds: 2)); // Wait for app to settle
+        await Future.delayed(const Duration(seconds: 2));
         if (mounted && !_autoReconnectAttempted) {
           await _silentAutoReconnect(mac);
         }
@@ -77,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     _autoReconnectAttempted = true;
     
-    // Wait a bit before auto-reconnecting
     await Future.delayed(const Duration(seconds: 1));
     
     print("🔄 Auto-reconnecting to $mac...");
@@ -92,7 +165,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       print("⏰ Auto-reconnect timeout");
     } catch (e) {
       print("⚠️ Auto-reconnect failed: $e");
-      // Don't show error - it's automatic
     }
   }
 
@@ -113,7 +185,99 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _tts.stop();
+    _crashCountdownTimer?.cancel();
     super.dispose();
+  }
+
+  void _handleRiskUpdate(RiskData riskData) {
+    setState(() {
+      _currentRisk = riskData;
+    });
+    
+    if (riskData.isCrash && !_showingCrashAlert) {
+      print('🚨 CRASH DETECTED! Showing alert...');
+      _showCrashAlert(riskData);
+    }
+  }
+
+  void _showCrashAlert(RiskData risk) {
+    if (_showingCrashAlert) return;
+    
+    _showingCrashAlert = true;
+    _crashCountdownSeconds = 10;
+    
+    _tts.speak("CRASH DETECTED! Emergency alert activated.");
+    
+    _startCrashCountdown();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (context) => CrashAlertPage(
+        riskData: risk,
+        onCancel: () {
+          _cancelCrashAlert();
+        },
+        onConfirm: () {
+          _confirmCrashEmergency(risk);
+        },
+      ),
+    ).then((_) {
+      _showingCrashAlert = false;
+      _crashCountdownTimer?.cancel();
+    });
+  }
+
+  void _startCrashCountdown() {
+    _crashCountdownTimer?.cancel();
+    _crashCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_crashCountdownSeconds > 0) {
+        setState(() {
+          _crashCountdownSeconds--;
+        });
+        
+        if (_crashCountdownSeconds == 5) {
+          _tts.speak("5 seconds until emergency call");
+        }
+        
+        if (_crashCountdownSeconds <= 0) {
+          _triggerEmergencyServices();
+          timer.cancel();
+        }
+      }
+    });
+  }
+
+  void _cancelCrashAlert() {
+    _crashCountdownTimer?.cancel();
+    _showingCrashAlert = false;
+    
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+    
+    print('⚠️ Crash alert cancelled by user');
+    _tts.speak("Crash alert cancelled");
+  }
+
+  void _confirmCrashEmergency(RiskData risk) {
+    _crashCountdownTimer?.cancel();
+    _showingCrashAlert = false;
+    
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+    
+    print('🚨 Emergency confirmed! Calling services...');
+    _tts.speak("Emergency services notified");
+  }
+
+  void _triggerEmergencyServices() {
+    if (_showingCrashAlert) {
+      print('⏰ Countdown finished! Triggering emergency services...');
+      _tts.speak("Automatic emergency call activated");
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -132,15 +296,120 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _tts.speak(text);
   }
 
+  // Enhanced voice guidance using route points
+  Future<void> _handleTelemetryUpdateWithHeading(Telemetry? t, double? heading) async {
+    if (!_tripStarted || _destination == null || t == null) return;
+
+    final current = latlng.LatLng(t.lat, t.lon);
+    final dest = _destination!;
+    
+    // Check arrival using direct distance
+    final metersToDest = _distance(current, dest);
+    if (metersToDest < 25 && !_tripCompleted) {
+      if (!mounted) return;
+      setState(() {
+        _tripStarted = false;
+        _tripCompleted = true;
+      });
+      await _speak("You have arrived at your destination.");
+      return;
+    }
+
+    // Enhanced turn guidance using route points
+    if (_routePoints.isNotEmpty && heading != null) {
+      final nearestIndex = _findNearestRoutePoint(current);
+      
+      if (nearestIndex < _routePoints.length - 1) {
+        final nextPoint = _routePoints[nearestIndex + 1];
+        final metersToNext = _distance(current, nextPoint);
+        
+        // Check if approaching a turn (within 100m)
+        if (metersToNext < 100) {
+          final bearingToNext = _bearingBetween(current, nextPoint);
+          final delta = _normalizeAngle(bearingToNext - heading);
+          
+          String hint;
+          if (delta > 30) {
+            hint = "Prepare to turn right in ${metersToNext.toStringAsFixed(0)} meters.";
+          } else if (delta < -30) {
+            hint = "Prepare to turn left in ${metersToNext.toStringAsFixed(0)} meters.";
+          } else if (delta.abs() > 10) {
+            hint = "Slight adjustment needed.";
+          } else {
+            hint = "Continue straight.";
+          }
+          
+          await _speak(hint);
+          return;
+        }
+      }
+    }
+
+    // Fallback to original guidance
+    if (heading == null) {
+      await _speak("Head towards your destination.");
+      return;
+    }
+
+    final bearingToDest = _bearingBetween(current, dest);
+    final delta = _normalizeAngle(bearingToDest - heading);
+
+    String hint;
+    if (delta > 25) {
+      hint = "Turn right towards your destination.";
+    } else if (delta < -25) {
+      hint = "Turn left towards your destination.";
+    } else {
+      hint = "Continue straight.";
+    }
+
+    await _speak(hint);
+  }
+
+  double? _headingFromPrev(latlng.LatLng current) {
+    if (_prevPos == null) {
+      _prevPos = current;
+      return null;
+    }
+    final moved = _distance(_prevPos!, current);
+    if (moved < 2) return null;
+    final h = _bearingBetween(_prevPos!, current);
+    _prevPos = current;
+    return h;
+  }
+
+  double _bearingBetween(latlng.LatLng from, latlng.LatLng to) {
+    final lat1 = _degToRad(from.latitude);
+    final lon1 = _degToRad(from.longitude);
+    final lat2 = _degToRad(to.latitude);
+    final lon2 = _degToRad(to.longitude);
+
+    final dLon = lon2 - lon1;
+    final y = math.sin(dLon) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+
+    final brng = math.atan2(y, x);
+    return (_radToDeg(brng) + 360) % 360;
+  }
+
+  double _degToRad(double deg) => deg * (math.pi / 180.0);
+  double _radToDeg(double rad) => rad * (180.0 / math.pi);
+
+  double _normalizeAngle(double angle) {
+    double a = angle % 360;
+    if (a > 180) a -= 360;
+    if (a < -180) a += 360;
+    return a;
+  }
+
   Future<void> _checkPermissionsAndConnect() async {
-    // Check and request permissions
     final locationStatus = await Permission.locationWhenInUse.request();
     if (!locationStatus.isGranted) {
       _showSnackBar("Location permission is required for Bluetooth");
       return;
     }
 
-    // Open device selection
     await _pickAndConnectEsp();
   }
 
@@ -163,10 +432,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // Check if device is paired (simplified check)
       final bool isLikelyPaired = await _checkIfDeviceIsPaired(mac);
       if (!isLikelyPaired) {
-        // Show pairing instructions
         await _showPairingInstructions(mac);
         setState(() => _connecting = false);
         return;
@@ -189,10 +456,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _checkIfDeviceIsPaired(String mac) async {
-    // Simplified check - in production, use platform-specific code
-    // For now, we'll show pairing instructions for any new device
     final savedMac = await EspPrefs.loadMac();
-    return savedMac == mac; // If we've connected before, assume it's paired
+    return savedMac == mac;
   }
 
   Future<void> _showPairingInstructions(String mac) async {
@@ -249,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              openAppSettings(); // Open system settings
+              openAppSettings();
             },
             child: const Text("Open Settings"),
           ),
@@ -304,11 +569,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final errorStr = e.toString();
     
     if (errorStr.contains("connection_failed") || errorStr.contains("could not connect")) {
-      return "Device not responding. Please:\n1. Check if powered on\n2. Ensure it's paired\n3. Stay within range";
+      return "Device not responding.";
     }
     
     if (errorStr.contains("timeout")) {
-      return "Connection timeout. Device may be out of range.";
+      return "Connection timeout.";
     }
     
     if (errorStr.contains("permission")) {
@@ -331,7 +596,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           .startWithMac(mac)
           .timeout(const Duration(seconds: 12));
     } on TimeoutException {
-      _showSnackBar("Connection timeout - check device power and range");
+      _showSnackBar("Connection timeout");
     } catch (e) {
       _showSnackBar("Reconnect failed: ${_parseErrorForUser(e)}");
     } finally {
@@ -366,222 +631,171 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         !state.connected || 
         _selectedMac == null;
     
-    if (!shouldShowCard) {
-      return const SizedBox.shrink();
-    }
-    
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF111827),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: state.error != null ? Colors.red.withOpacity(0.5) : 
-                   state.loading ? Colors.blue.withOpacity(0.5) :
-                   Colors.grey.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // Loading indicator or icon
-            if (state.loading)
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation(Colors.blue[400]!),
-                ),
-              )
-            else
-              Icon(
-                Icons.bluetooth,
-                size: 22,
-                color: state.error != null ? Colors.red :
-                       !state.connected ? Colors.orange :
-                       Colors.green,
+      child: Column(
+        children: [
+          // Bluetooth Connection Card
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: state.error != null ? Colors.red.withOpacity(0.5) : 
+                       state.loading ? Colors.blue.withOpacity(0.5) :
+                       Colors.grey.withOpacity(0.3),
+                width: 1,
               ),
-            
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _selectedMac == null
-                        ? "No helmet connected"
-                        : "Helmet: ${_selectedMac?.substring(_selectedMac!.length - 8)}",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
+            ),
+            child: Row(
+              children: [
+                if (state.loading)
+                  SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Colors.blue[400]!),
                     ),
+                  )
+                else
+                  Icon(
+                    Icons.bluetooth,
+                    size: 22,
+                    color: state.error != null ? Colors.red :
+                           !state.connected ? Colors.orange :
+                           Colors.green,
                   ),
-                  
-                  // Status message with loading dots
-                  if (state.loading)
-                    Row(
-                      children: [
+                
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedMac == null
+                            ? "No helmet connected"
+                            : "Helmet: ${_selectedMac?.substring(_selectedMac!.length - 8)}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      
+                      if (state.loading)
                         Text(
                           state.connectionStatus ?? "Connecting",
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             color: Colors.blue,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        _buildLoadingDots(),
-                      ],
-                    ),
-                  
-                  // Error message
-                  if (state.error != null)
-                    Text(
-                      state.error!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.red,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  
-                  // Disconnected state
-                  if (!state.connected && !state.loading && state.error == null)
-                    Text(
-                      "Disconnected",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange,
-                      ),
-                    ),
+                      
+                      if (state.error != null)
+                        Text(
+                          state.error!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.red,
+                          ),
+                        ),
+                      
+                      if (!state.connected && !state.loading && state.error == null)
+                        const Text(
+                          "Disconnected",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                
+                if (_selectedMac == null)
+                  ElevatedButton(
+                    onPressed: _connecting ? null : _checkPermissionsAndConnect,
+                    child: _connecting 
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: const AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          )
+                        : const Text("Connect"),
+                  )
+                else ...[
+                  OutlinedButton(
+                    onPressed: _connecting ? null : _reconnectSaved,
+                    child: _connecting 
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.blue),
+                            ),
+                          )
+                        : const Text("Reconnect"),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: "Forget device",
+                    onPressed: _connecting ? null : _forgetDevice,
+                    icon: _connecting 
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.grey),
+                            ),
+                          )
+                        : const Icon(Icons.delete_outline),
+                  ),
                 ],
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Risk WebSocket Status
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: state.riskWsConnected ? Colors.green : Colors.orange,
+                width: 1,
               ),
             ),
-            const SizedBox(width: 10),
-            
-            // Connect/Reconnect buttons
-            if (_selectedMac == null)
-              ElevatedButton(
-                onPressed: _connecting ? null : _checkPermissionsAndConnect,
-                child: _connecting 
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.white),
-                        ),
-                      )
-                    : const Text("Connect"),
-              )
-            else ...[
-              OutlinedButton(
-                onPressed: _connecting ? null : _reconnectSaved,
-                child: _connecting 
-                    ? SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.blue),
-                        ),
-                      )
-                    : const Text("Reconnect"),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: "Forget device",
-                onPressed: _connecting ? null : _forgetDevice,
-                icon: _connecting 
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(Colors.grey),
-                        ),
-                      )
-                    : const Icon(Icons.delete_outline),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Loading dots animation
-  Widget _buildLoadingDots() {
-    return SizedBox(
-      width: 20,
-      height: 10,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _buildAnimatedDot(0),
-          const SizedBox(width: 2),
-          _buildAnimatedDot(1),
-          const SizedBox(width: 2),
-          _buildAnimatedDot(2),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnimatedDot(int index) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-      builder: (context, value, child) {
-        final offset = (value * 3 + index) % 3;
-        final opacity = offset < 1 ? offset : (2 - offset);
-        
-        return Container(
-          width: 4,
-          height: 4,
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(opacity.clamp(0.3, 1.0)),
-            shape: BoxShape.circle,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildErrorState(TelemetryState state) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.red[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red[100]!),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.error_outline,
-            color: Colors.red,
-            size: 48,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            state.error ?? "Connection error",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.red[800]),
-          ),
-          const SizedBox(height: 16),
-          if (_selectedMac != null)
-            ElevatedButton(
-              onPressed: _reconnectSaved,
-              child: const Text("Try Again"),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.cloud,
+                  size: 20,
+                  color: state.riskWsConnected ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    state.riskWsConnected 
+                        ? "Risk monitoring: Connected"
+                        : "Risk monitoring: Connecting...",
+                    style: TextStyle(
+                      color: state.riskWsConnected ? Colors.green : Colors.orange,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -605,14 +819,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Please wait',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
               ),
             ),
           ],
@@ -648,13 +854,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
-            const SizedBox(height: 16),
-            if (_selectedMac != null)
-              ElevatedButton.icon(
-                onPressed: _reconnectSaved,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh Connection'),
-              ),
           ],
         ),
       ),
@@ -663,85 +862,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildTelemetryContent(BuildContext context, TelemetryState state) {
     if (state.loading) return _buildLoadingState();
-    if (state.error != null && state.data == null) return _buildErrorState(state);
+    if (state.error != null && state.data == null) return Container();
     if (state.data == null) return _buildWaitingForData();
 
     return MetricsGrid(telemetry: state.data!);
-  }
-
-  // Navigation functions
-  void _handleTelemetryUpdateWithHeading(Telemetry? t, double? heading) {
-    if (!_tripStarted || _destination == null || t == null) return;
-
-    final current = latlng.LatLng(t.lat, t.lon);
-    final dest = _destination!;
-    final meters = _distance(current, dest);
-
-    if (meters < 25 && !_tripCompleted) {
-      if (!mounted) return;
-      setState(() {
-        _tripStarted = false;
-        _tripCompleted = true;
-      });
-      _speak("You have arrived at your destination.");
-      return;
-    }
-
-    if (heading == null) {
-      _speak("Head towards your destination.");
-      return;
-    }
-
-    final bearingToDest = _bearingBetween(current, dest);
-    final delta = _normalizeAngle(bearingToDest - heading);
-
-    String hint;
-    if (delta > 25) {
-      hint = "Turn right towards your destination.";
-    } else if (delta < -25) {
-      hint = "Turn left towards your destination.";
-    } else {
-      hint = "Continue straight.";
-    }
-
-    _speak(hint);
-  }
-
-  double? _headingFromPrev(latlng.LatLng current) {
-    if (_prevPos == null) {
-      _prevPos = current;
-      return null;
-    }
-    final moved = _distance(_prevPos!, current);
-    if (moved < 2) return null;
-    final h = _bearingBetween(_prevPos!, current);
-    _prevPos = current;
-    return h;
-  }
-
-  double _bearingBetween(latlng.LatLng from, latlng.LatLng to) {
-    final lat1 = _degToRad(from.latitude);
-    final lon1 = _degToRad(from.longitude);
-    final lat2 = _degToRad(to.latitude);
-    final lon2 = _degToRad(to.longitude);
-
-    final dLon = lon2 - lon1;
-    final y = math.sin(dLon) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-
-    final brng = math.atan2(y, x);
-    return (_radToDeg(brng) + 360) % 360;
-  }
-
-  double _degToRad(double deg) => deg * (math.pi / 180.0);
-  double _radToDeg(double rad) => rad * (180.0 / math.pi);
-
-  double _normalizeAngle(double angle) {
-    double a = angle % 360;
-    if (a > 180) a -= 360;
-    if (a < -180) a += 360;
-    return a;
   }
 
   @override
@@ -768,6 +892,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         centerTitle: true,
         actions: [
           IconButton(
+            icon: Icon(Icons.warning, color: Colors.orange),
+            onPressed: () {
+              final testRisk = RiskData(
+                level: 'HIGH',
+                score: 95,
+                reasons: ['Test crash'],
+                speedKmh: 60.0,
+              );
+              
+              context.read<TelemetryCubit>().updateRiskData(testRisk);
+            },
+            tooltip: 'Test risk data',
+          ),
+          IconButton(
             tooltip: 'Recenter',
             onPressed: () => _mapKey.currentState?.recenter(),
             icon: const Icon(Icons.my_location),
@@ -783,16 +921,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             final heading = _headingFromPrev(cur);
             _handleTelemetryUpdateWithHeading(t, heading);
           }
+          
+          if (state.currentRisk != null && state.currentRisk != _currentRisk) {
+            _handleRiskUpdate(state.currentRisk!);
+          }
         },
         child: BlocBuilder<TelemetryCubit, TelemetryState>(
           builder: (context, state) {
             return SingleChildScrollView(
               child: Column(
                 children: [
-                  // Connection Card
+                  // Connection Cards
                   _buildConnectionCard(state),
 
-                  // Map View
+                  // Risk Status Indicator
+                  if (state.currentRisk != null)
+                    RiskStatusIndicator(
+                      riskData: state.currentRisk,
+                      onTap: () {
+                        if (state.currentRisk != null && state.currentRisk!.isCrash) {
+                          _showCrashAlert(state.currentRisk!);
+                        }
+                      },
+                    ),
+
+                  // Map View with Routing
                   SizedBox(
                     height: 400,
                     child: MapView(
@@ -805,10 +958,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _destination = dest;
                           _tripStarted = false;
                           _tripCompleted = false;
+                          _routePoints.clear();
+                        });
+                      },
+                      onTripStatusChanged: (isActive) {
+                        setState(() {
+                          _tripStarted = isActive;
+                        });
+                      },
+                      onTripStarted: (destination) {
+                        // Could add trip start logic here
+                      },
+                      onRouteCalculated: (routePoints) {
+                        setState(() {
+                          _routePoints = routePoints;
                         });
                       },
                     ),
                   ),
+                  
+                  // Start Trip Button
+                  _buildStartTripButton(),
 
                   // Telemetry Content
                   _buildTelemetryContent(context, state),

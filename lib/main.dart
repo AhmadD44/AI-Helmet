@@ -1,3 +1,4 @@
+// main.dart
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -36,18 +37,15 @@ class AIHelmetApp extends StatelessWidget {
           create: (_) => AllTripsCubit(getIt.get<HomeRepoImpl>()),
         ),
 
-        // ✅ IMPORTANT: do NOT init BT here. Cubit is safe/lazy now.
         BlocProvider<TelemetryCubit>(
-  create: (_) => TelemetryCubit(
-    source: EspBtClassicSource(debugLog: true),
-    ingest: IngestWsClient(
-      ingestUri: Uri.parse("ws://3.14.15.242:8000/ws/ingest"),
-      debugLog: true,  // Enable logging
-    ),
-  ),
-),
-
-
+          create: (_) => TelemetryCubit(
+            source: EspBtClassicSource(debugLog: true),
+            ingest: IngestWsClient(
+              ingestUri: Uri.parse("ws://3.14.15.242:8000/ws/ingest"),
+              debugLog: true,
+            ),
+          ),
+        ),
       ],
       child: MaterialApp(
         title: 'AI Helmet',

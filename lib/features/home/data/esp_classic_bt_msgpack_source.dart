@@ -138,65 +138,71 @@ class EspBtClassicSource {
 
   // =============== COPY EXACTLY FROM YOUR WORKING CODE ===============
    void _processData(List<int> bytes) {
-    if (bytes.isEmpty) return;
+  if (bytes.isEmpty) return;
+  
+  _buffer.addAll(bytes);
+  
+  while (true) {
+    if (_buffer.isEmpty) break;
     
-    // Add to buffer
-    _buffer.addAll(bytes);
+    String bufferStr = utf8.decode(_buffer, allowMalformed: true);
+    int jsonStart = bufferStr.indexOf('{');
     
-    // Process ONE complete JSON at a time
-    while (true) {
-      if (_buffer.isEmpty) break;
-      
-      // Convert buffer to string
-      String bufferStr = utf8.decode(_buffer, allowMalformed: true);
-      
-      // Find FIRST "{" (start of JSON)
-      int jsonStart = bufferStr.indexOf('{');
-      if (jsonStart == -1) {
-        // No JSON start, clear buffer
-        _buffer.clear();
-        break;
+    if (jsonStart == -1) {
+      _buffer.clear();
+      break;
+    }
+    
+    // Find the matching closing brace
+    int braceCount = 0;
+    int jsonEnd = -1;
+    
+    for (int i = jsonStart; i < bufferStr.length; i++) {
+      if (bufferStr[i] == '{') {
+        braceCount++;
+      } else if (bufferStr[i] == '}') {
+        braceCount--;
+        if (braceCount == 0) {
+          jsonEnd = i;
+          break;
+        }
       }
-      
-      // Find ":0}}" after the start (end of JSON)
-      int jsonEnd = bufferStr.indexOf(':0}}', jsonStart);
-      if (jsonEnd == -1) {
-        // No complete JSON yet
-        break;
+    }
+    
+    if (jsonEnd == -1) {
+      // Incomplete JSON, wait for more data
+      break;
+    }
+    
+    // Extract the complete JSON object
+    String jsonString = bufferStr.substring(jsonStart, jsonEnd + 1);
+    
+    if (debugLog) {
+      print("✅ Processing JSON (${jsonString.length} chars)");
+    }
+    
+    _processSingleJson(jsonString);
+    
+    // Remove processed data
+    int removeUpTo = jsonEnd + 1;
+    
+    // Skip any whitespace/newlines
+    if (removeUpTo < bufferStr.length && 
+        (bufferStr[removeUpTo] == '\r' || bufferStr[removeUpTo] == '\n')) {
+      removeUpTo++;
+      if (removeUpTo < bufferStr.length && 
+          bufferStr[removeUpTo] == '\n' && bufferStr[removeUpTo - 1] == '\r') {
+        removeUpTo++;
       }
-      
-      // Extract ONLY ONE JSON
-      String jsonString = bufferStr.substring(jsonStart, jsonEnd + 4); // +4 for :0}}
-      
-      if (debugLog) {
-        print("✅ Processing JSON (${jsonString.length} chars)");
-      }
-      
-      // Process this single JSON
-      _processSingleJson(jsonString);
-      
-      // Remove processed data (including newlines)
-      int removeUpTo = jsonEnd + 4; // Remove up to :0}}
-      
-      // Check for newlines
-      if (jsonEnd + 9 <= bufferStr.length && 
-          bufferStr.substring(jsonEnd, jsonEnd + 9) == ':0}}\r\n\r\n') {
-        removeUpTo = jsonEnd + 9;
-      } else if (jsonEnd + 7 <= bufferStr.length && 
-                 bufferStr.substring(jsonEnd, jsonEnd + 7) == ':0}}\n\n') {
-        removeUpTo = jsonEnd + 7;
-      }
-      
-      // Remove from buffer
-      if (removeUpTo <= _buffer.length) {
-        _buffer.removeRange(0, removeUpTo);
-      } else {
-        _buffer.clear();
-      }
-      
-      // Loop to process next JSON if available
+    }
+    
+    if (removeUpTo <= _buffer.length) {
+      _buffer.removeRange(0, removeUpTo);
+    } else {
+      _buffer.clear();
     }
   }
+}
 
 
   void _processSingleJson(String jsonString) {

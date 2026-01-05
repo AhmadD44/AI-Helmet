@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:isd/core/errors/flutter_bl_handler.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
@@ -48,6 +47,21 @@ Telemetry? parseTelemetry(String rawData) {
 
 Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
   try {
+    // Check if this is a RISK_STATUS message
+    if (jsonData['type'] == 'RISK_STATUS') {
+      print('⚠️ RISK_STATUS message detected in telemetry parser');
+      print('   Level: ${jsonData['payload']?['level']}');
+      print('   Score: ${jsonData['payload']?['score']}');
+      // We handle RISK_STATUS separately via WebSocketRiskListener
+      return null;
+    }
+    
+    // Check if this is telemetry data
+    if (jsonData['type'] != 'telemetry' && !jsonData.containsKey('ts')) {
+      print('⚠️ Unknown message type: ${jsonData['type']}');
+      return null;
+    }
+    
     // Ensure all numbers are properly typed
     final convertedData = _convertNumbers(jsonData);
     
@@ -63,7 +77,7 @@ Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
     enhancedPayload['parsed_at'] = DateTime.now().millisecondsSinceEpoch;
 
     // Show FULL data before creating Telemetry object
-    print('🎯 FULL TELEMETRY DATA RECEIVED:');
+    print('🎯 TELEMETRY DATA RECEIVED:');
     print(jsonEncode(enhancedPayload));
     print('🎯 END OF TELEMETRY DATA');
 
@@ -72,40 +86,29 @@ Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
     print('✅ TELEMETRY PARSED SUCCESSFULLY:');
     print('  Device: ${telemetry.deviceId}');
     print('  Helmet: ${telemetry.helmetOn ? "✅ ON" : "❌ OFF"}');
+    print('  Timestamp: ${telemetry.ts}');
     
-    if (telemetry.heartRate != null) {
-      print('  ❤️  HEART RATE SENSOR:');
-      print('     OK: ${telemetry.heartRate!.ok}');
-      print('     IR: ${telemetry.heartRate!.ir}');
-      print('     Red: ${telemetry.heartRate!.red}');
-      print('     Finger: ${telemetry.heartRate!.finger}');
-      print('     HR: ${telemetry.heartRate!.hr} BPM');
-      print('     SpO2: ${telemetry.heartRate!.spo2}%');
+    if (telemetry.heartRate != null && telemetry.heartRate!.ok) {
+      print('  ❤️  HEART RATE: ${telemetry.heart} BPM, SpO2: ${telemetry.spo2}%');
+      print('     Finger: ${telemetry.fingerDetected ? "✅ Detected" : "❌ Not detected"}');
+    } else {
+      print('  ❤️  HEART RATE: No data');
     }
     
-    if (telemetry.imu != null) {
-      print('  📊 IMU SENSOR:');
-      print('     OK: ${telemetry.imu!.ok}');
-      print('     Sleep: ${telemetry.imu!.sleep}');
-      print('     Accel X: ${telemetry.ax}');
-      print('     Accel Y: ${telemetry.ay}');
-      print('     Accel Z: ${telemetry.az}');
-      print('     Gyro X: ${telemetry.gx}');
-      print('     Gyro Y: ${telemetry.gy}');
-      print('     Gyro Z: ${telemetry.gz}');
+    if (telemetry.imu != null && telemetry.imu!.ok) {
+      print('  📊 IMU:');
+      print('     Accel: X=${telemetry.ax?.toStringAsFixed(2)}, Y=${telemetry.ay?.toStringAsFixed(2)}, Z=${telemetry.az?.toStringAsFixed(2)}');
+      print('     Gyro: X=${telemetry.gx?.toStringAsFixed(2)}, Y=${telemetry.gy?.toStringAsFixed(2)}, Z=${telemetry.gz?.toStringAsFixed(2)}');
     }
     
-    if (telemetry.gps != null) {
-      print('  📍 GPS:');
-      print('     OK: ${telemetry.gps!.ok}');
-      print('     Lat: ${telemetry.lat}');
-      print('     Lon: ${telemetry.lon}');
-      print('     Alt: ${telemetry.altitude}');
-      print('     Sats: ${telemetry.satellites}');
-      print('     Lock: ${telemetry.gpsLock}');
+    if (telemetry.gps != null && telemetry.gps!.ok) {
+      print('  📍 GPS: ${telemetry.lat.toStringAsFixed(6)}, ${telemetry.lon.toStringAsFixed(6)}');
+      print('     Lock: ${telemetry.gpsLock ? "✅" : "❌"}, Sats: ${telemetry.satellites}');
+    } else {
+      print('  📍 GPS: No lock');
     }
     
-    print('  🚀 Speed: ${telemetry.speed ?? 0} km/h');
+    print('  🚀 Speed: ${telemetry.speed?.toStringAsFixed(1) ?? "0"} km/h');
 
     return telemetry;
   } catch (e, s) {
