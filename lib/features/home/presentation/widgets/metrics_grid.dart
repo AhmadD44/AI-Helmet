@@ -66,9 +66,9 @@ class MetricsGrid extends StatelessWidget {
         
         // Create risk card data
         final riskValue = currentRisk != null
-            ? 'Level: ${currentRisk.level}\n'
-              'Score: ${currentRisk.score}\n'
-              'Speed: ${currentRisk.speedKmh.toStringAsFixed(0)} km/h'
+            ? ' ${currentRisk.level}\n'
+              // 'Score: ${currentRisk.score}\n'
+              // 'Speed: ${currentRisk.speedKmh.toStringAsFixed(0)} km/h'
             : 'No risk data';
         
         final riskColor = currentRisk?.color ?? Colors.grey;

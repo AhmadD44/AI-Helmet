@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:isd/features/home/presentation/widgets/crash_alert.dart';
 import 'package:isd/features/home/presentation/widgets/risk_indicator.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:permission_handler/permission_handler.dart';
@@ -18,7 +19,6 @@ import 'package:isd/features/home/presentation/widgets/map_view.dart';
 import 'package:isd/features/home/presentation/widgets/metrics_grid.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
-import 'package:isd/features/home/presentation/widgets/crash_alert_page.dart';
 
 class HomeScreen extends StatefulWidget {
   final Future<void> Function()? onSignOut;
@@ -54,6 +54,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _crashCountdownTimer;
   int _crashCountdownSeconds = 10;
 
+  // Store ESP location for map initialization (separate from telemetry data)
+  // latlng.LatLng? _espLocation;
+  // Store mobile location for voice guidance fallback
+  latlng.LatLng? _mobileLocation;
 
   @override
   void initState() {
@@ -297,14 +301,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // Enhanced voice guidance using route points
-  Future<void> _handleTelemetryUpdateWithHeading(Telemetry? t, double? heading) async {
-    if (!_tripStarted || _destination == null || t == null) return;
-
-    final current = latlng.LatLng(t.lat, t.lon);
-    final dest = _destination!;
+  Future<void> _handleTelemetryUpdateWithHeading(latlng.LatLng? current, double? heading) async {
+    if (!_tripStarted || _destination == null || current == null) return;
     
     // Check arrival using direct distance
-    final metersToDest = _distance(current, dest);
+    final metersToDest = _distance(current, _destination!);
     if (metersToDest < 25 && !_tripCompleted) {
       if (!mounted) return;
       setState(() {
@@ -351,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final bearingToDest = _bearingBetween(current, dest);
+    final bearingToDest = _bearingBetween(current, _destination!);
     final delta = _normalizeAngle(bearingToDest - heading);
 
     String hint;
@@ -402,6 +403,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (a < -180) a += 360;
     return a;
   }
+
+  // Handle mobile location updates from MapView (for voice guidance only)
+  // void _handleMobileLocationUpdate(latlng.LatLng location) {
+  //   _mobileLocation = location;
+    
+  //   // Use mobile location for voice guidance if ESP GPS is not available
+  //   if (_tripStarted && _espLocation == null) {
+  //     final heading = _headingFromPrev(location);
+  //     _handleTelemetryUpdateWithHeading(location, heading);
+  //   }
+  // }
 
   Future<void> _checkPermissionsAndConnect() async {
     final locationStatus = await Permission.locationWhenInUse.request();
@@ -626,11 +638,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildConnectionCard(TelemetryState state) {
-    final shouldShowCard = state.loading || 
-        state.error != null || 
-        !state.connected || 
-        _selectedMac == null;
-    
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       child: Column(
@@ -849,10 +856,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Waiting for telemetry data...',
+            Text(
+              context.watch<TelemetryCubit>().state.data == null
+                  ? 'Waiting for telemetry data...'
+                  : 'ESP GPS unavailable, using mobile GPS',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
+              style: const TextStyle(color: Colors.grey),
             ),
           ],
         ),
@@ -916,12 +925,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: BlocListener<TelemetryCubit, TelemetryState>(
         listener: (context, state) {
           final t = state.data;
-          if (t != null) {
-            final cur = latlng.LatLng(t.lat, t.lon);
-            final heading = _headingFromPrev(cur);
-            _handleTelemetryUpdateWithHeading(t, heading);
+          
+          // Store ESP location for map initialization (but don't interfere with telemetry)
+          // if (t != null && t.lat != 0.0 && t.lon != 0.0) {
+          //   _espLocation = latlng.LatLng(t.lat, t.lon);
+          // }
+          
+          // Handle telemetry updates for voice guidance
+          if (t != null && _tripStarted && _destination != null) {
+            // Use ESP GPS if available, otherwise use mobile GPS
+            latlng.LatLng? currentLocation;
+            double? heading;
+            
+            if (t.lat != 0.0 && t.lon != 0.0) {
+              // Use ESP GPS
+              currentLocation = latlng.LatLng(t.lat, t.lon);
+              heading = _headingFromPrev(currentLocation);
+              print('🎧 Voice guidance using ESP GPS');
+            } else if (_mobileLocation != null) {
+              // Fallback to mobile GPS
+              currentLocation = _mobileLocation;
+              heading = _headingFromPrev(currentLocation!);
+              print('🎧 Voice guidance using Mobile GPS (ESP GPS unavailable)');
+            }
+            
+            if (currentLocation != null) {
+              _handleTelemetryUpdateWithHeading(currentLocation, heading);
+            }
           }
           
+          // Handle risk updates
           if (state.currentRisk != null && state.currentRisk != _currentRisk) {
             _handleRiskUpdate(state.currentRisk!);
           }
@@ -945,12 +978,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       },
                     ),
 
-                  // Map View with Routing
+                  // Map View - COMPLETELY SEPARATE from telemetry data
                   SizedBox(
                     height: 400,
                     child: MapView(
                       key: _mapKey,
-                      telemetry: state.data,
                       destination: _destination,
                       tripActive: _tripStarted,
                       onDestinationSelected: (dest) {
@@ -966,21 +998,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           _tripStarted = isActive;
                         });
                       },
-                      onTripStarted: (destination) {
-                        // Could add trip start logic here
-                      },
                       onRouteCalculated: (routePoints) {
                         setState(() {
                           _routePoints = routePoints;
                         });
-                      },
+                      }, 
+                      // Mobile GPS updates (for voice guidance fallback only)
+                      // onMobileLocationUpdate: _handleMobileLocationUpdate,
                     ),
                   ),
                   
                   // Start Trip Button
                   _buildStartTripButton(),
 
-                  // Telemetry Content
+                  // Telemetry Content - PURE ESP DATA, unaffected by mobile GPS
                   _buildTelemetryContent(context, state),
                 ],
               ),

@@ -40,6 +40,7 @@ class Telemetry extends Equatable {
           : null,
     );
   }
+  
 
   // Helper getters for convenience
   int? get heart => heartRate?.hr;

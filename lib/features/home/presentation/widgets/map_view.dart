@@ -4,29 +4,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:location/location.dart';
-import 'package:permission_handler/permission_handler.dart' hide PermissionStatus;
 import 'package:http/http.dart' as http;
 
-import 'telemetry.dart';
+// REMOVE: import 'telemetry.dart'; // No longer needed!
 
 class MapView extends StatefulWidget {
-  final Telemetry? telemetry;
+  // REMOVE: final Telemetry? telemetry; // No ESP telemetry in MapView!
+  
+  // Keep only map/location related properties
+  final latlng.LatLng? initialLocation;  // For initial map center
   final latlng.LatLng? destination;
   final bool tripActive;
   final void Function(latlng.LatLng dest)? onDestinationSelected;
   final void Function(bool isTripActive)? onTripStatusChanged;
   final void Function(latlng.LatLng destination)? onTripStarted;
   final void Function(List<latlng.LatLng> routePoints)? onRouteCalculated;
+  
+  // Add callback for mobile GPS updates (optional, if other components need it)
+  final void Function(latlng.LatLng mobileLocation)? onMobileLocationUpdate;
 
   const MapView({
     super.key,
-    required this.telemetry,
+    this.initialLocation,  // Changed from telemetry
     this.destination,
     this.tripActive = false,
     this.onDestinationSelected,
     this.onTripStatusChanged,
     this.onTripStarted,
     this.onRouteCalculated,
+    this.onMobileLocationUpdate,  // New: for mobile GPS updates
   });
 
   @override
@@ -43,59 +49,35 @@ class MapViewState extends State<MapView> {
   double _routeDistance = 0.0;
   int _routeDuration = 0;
   
-  // Location package variables
+  // Location package variables - ONLY FOR MAP/NAVIGATION
   final Location _location = Location();
   LocationData? _currentMobileLocation;
   bool _isMobileGpsAvailable = false;
   bool _isListening = false;
   StreamSubscription<LocationData>? _locationSubscription;
 
-  /// Priority: ESP GPS first, then mobile GPS
-  bool get _hasValidGPS {
-    if (_hasValidEspGps) return true;
-    
-    if (_currentMobileLocation != null) {
-      return _currentMobileLocation!.latitude != 0 && 
-             _currentMobileLocation!.longitude != 0;
-    }
-    
-    return false;
-  }
-
-  bool get _hasValidEspGps {
-    final t = widget.telemetry;
-    if (t == null) return false;
-    
-    final isZeroZero = t.lat == 0.0 && t.lon == 0.0;
-    final isWithinBounds = t.lat >= -90 && t.lat <= 90 && 
-                           t.lon >= -180 && t.lon <= 180;
-    
-    return !isZeroZero && isWithinBounds;
-  }
-
+  /// Get current location for MAP DISPLAY ONLY
   latlng.LatLng get _currentLocation {
-    if (_hasValidEspGps) {
-      return latlng.LatLng(widget.telemetry!.lat, widget.telemetry!.lon);
-    }
-    
-    if (_currentMobileLocation != null && 
-        _currentMobileLocation!.latitude != 0 && 
-        _currentMobileLocation!.longitude != 0) {
-      return latlng.LatLng(
-        _currentMobileLocation!.latitude!,
-        _currentMobileLocation!.longitude!,
-      );
-    }
-    
-    return const latlng.LatLng(33.5631, 35.3689);
+  // Use ONLY mobile GPS
+  if (_currentMobileLocation != null &&
+      _currentMobileLocation!.latitude != null &&
+      _currentMobileLocation!.longitude != null &&
+      _currentMobileLocation!.latitude != 0 &&
+      _currentMobileLocation!.longitude != 0) {
+    return latlng.LatLng(
+      _currentMobileLocation!.latitude!,
+      _currentMobileLocation!.longitude!,
+    );
   }
+  
+  // If no valid mobile GPS, use a default location
+  // You can change this to your preferred default
+  return const latlng.LatLng(33.5631, 35.3689); // Saida, Lebanon
+}
 
+  /// Get current GPS source for display
   String get _currentGpsSource {
-    if (_hasValidEspGps) return "ESP Helmet GPS";
-    if (_currentMobileLocation != null && 
-        _currentMobileLocation!.latitude != 0 && 
-        _currentMobileLocation!.longitude != 0) return "Mobile GPS";
-    return "No GPS";
+    return _isMobileGpsAvailable ? "GPS Available" : "No GPS";
   }
 
   latlng.LatLng get _saidaLocation {
@@ -103,10 +85,21 @@ class MapViewState extends State<MapView> {
   }
 
   void recenter() {
+  final hasValidMobileGps = _currentMobileLocation != null &&
+      _currentMobileLocation!.latitude != null &&
+      _currentMobileLocation!.longitude != null &&
+      _currentMobileLocation!.latitude != 0.0 &&
+      _currentMobileLocation!.longitude != 0.0;
+  
+  if (hasValidMobileGps) {
     _mapController.move(_currentLocation, 16);
+  } else {
+    // If no mobile GPS, center on default location
+    _mapController.move(const latlng.LatLng(33.5631, 35.3689), 13);
   }
+}
 
-  // ROUTING METHODS
+  // ROUTING METHODS (unchanged)
   Future<void> _calculateRoute() async {
     if (widget.destination == null) return;
     
@@ -147,7 +140,7 @@ class MapViewState extends State<MapView> {
     }
   }
 
-  Future<void> _initMobileGpsBackup() async {
+  Future<void> _initMobileGps() async {
     try {
       bool serviceEnabled = await _location.serviceEnabled();
       if (!serviceEnabled) {
@@ -161,7 +154,7 @@ class MapViewState extends State<MapView> {
         if (permissionGranted != PermissionStatus.granted) return;
       }
 
-      print('✅ Mobile GPS permission granted (backup)');
+      print('✅ Mobile GPS permission granted');
       
       _currentMobileLocation = await _location.getLocation();
       
@@ -175,12 +168,18 @@ class MapViewState extends State<MapView> {
               });
             }
             
-            if (!_hasValidEspGps) {
-              print('📍 Using Mobile GPS backup: ${currentLocation.latitude}, ${currentLocation.longitude}');
-            }
+            // NOTIFY PARENT ABOUT MOBILE GPS UPDATE (OPTIONAL)
+            widget.onMobileLocationUpdate?.call(
+              latlng.LatLng(
+                currentLocation.latitude!,
+                currentLocation.longitude!,
+              ),
+            );
+            
+            print('📍 Map using Mobile GPS: ${currentLocation.latitude}, ${currentLocation.longitude}');
           },
           onError: (error) {
-            print('❌ Location error: $error');
+            print('❌ Mobile GPS error: $error');
             if (mounted) {
               setState(() {
                 _isMobileGpsAvailable = false;
@@ -210,7 +209,7 @@ class MapViewState extends State<MapView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _mapController.move(_saidaLocation, 13);
-        _initMobileGpsBackup();
+        _initMobileGps();  // Start mobile GPS for map/navigation
       }
     });
   }
@@ -219,7 +218,7 @@ class MapViewState extends State<MapView> {
   void didUpdateWidget(covariant MapView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (!_centeredOnce && _hasValidEspGps) {
+    if (!_centeredOnce && _currentMobileLocation != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         
@@ -243,20 +242,8 @@ class MapViewState extends State<MapView> {
   @override
   Widget build(BuildContext context) {
     final currentLocation = _currentLocation;
-    final initialZoom = _hasValidGPS ? 16.0 : 13.0;
+    final initialZoom = _currentMobileLocation != null ? 16.0 : 13.0;
     
-    Color getMarkerColor() {
-      if (_hasValidEspGps) return Colors.blue;
-      if (_isMobileGpsAvailable) return Colors.green;
-      return Colors.orange;
-    }
-    
-    IconData getMarkerIcon() {
-      if (_hasValidEspGps) return Icons.bluetooth_connected;
-      if (_isMobileGpsAvailable) return Icons.motorcycle_outlined;
-      return Icons.location_city;
-    }
-
     return Stack(
       children: [
         FlutterMap(
@@ -278,63 +265,40 @@ class MapViewState extends State<MapView> {
               tileProvider: NetworkTileProvider(),
             ),
 
-            // 📍 Current position marker
-            if (_hasValidGPS)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    width: 42,
-                    height: 42,
-                    point: currentLocation,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: widget.tripActive ? Colors.green : getMarkerColor(),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2,
+            // 📍 Current position marker (based on mobile GPS or initial location)
+            MarkerLayer(
+              markers: [
+                Marker(
+                  width: 42,
+                  height: 42,
+                  point: currentLocation,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: widget.tripActive ? Colors.green : 
+                             _isMobileGpsAvailable ? Colors.blue : Colors.orange,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        widget.tripActive ? Icons.directions_bike : getMarkerIcon(),
-                        size: 24,
-                        color: Colors.white,
-                      ),
+                      ],
+                    ),
+                    child: Icon(
+                      widget.tripActive ? Icons.directions_bike : 
+                      _isMobileGpsAvailable ? Icons.directions_bike : Icons.location_city,
+                      size: 24,
+                      color: Colors.white,
                     ),
                   ),
-                ],
-              ),
-
-            // 📍 Saida marker
-            if (!_hasValidGPS)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    width: 40,
-                    height: 40,
-                    point: _saidaLocation,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.8),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.location_city,
-                        size: 24,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
+            ),
 
             // 🎯 Destination marker
             if (widget.destination != null)
@@ -401,30 +365,29 @@ class MapViewState extends State<MapView> {
         ),
 
         // GPS source indicator
-        if (_hasValidGPS)
-          Positioned(
-            top: 10,
-            left: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.7),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _hasValidEspGps ? Icons.bluetooth : Icons.phone_android,
-                    size: 16,
+        Positioned(
+          top: 10,
+          left: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isMobileGpsAvailable ? Icons.phone_android : Icons.device_hub,
+                  size: 16,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _currentGpsSource,
+                  style: const TextStyle(
                     color: Colors.white,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    _hasValidEspGps ? "Helmet GPS" : "Mobile GPS",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -559,8 +522,8 @@ class MapViewState extends State<MapView> {
             onPressed: recenter,
             backgroundColor: Colors.white,
             child: Icon(
-              _hasValidGPS ? Icons.my_location : Icons.location_city,
-              color: _hasValidGPS ? getMarkerColor() : Colors.orange,
+              _isMobileGpsAvailable ? Icons.my_location : Icons.location_city,
+              color: _isMobileGpsAvailable ? Colors.blue : Colors.orange,
             ),
           ),
         ),

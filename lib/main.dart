@@ -1,4 +1,5 @@
 // main.dart
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,6 +12,7 @@ import 'package:isd/features/home/data/esp_classic_bt_msgpack_source.dart';
 import 'package:isd/features/home/data/ingest_ws_client.dart';
 
 import 'package:isd/features/home/data/repos/home_repo_impl.dart';
+import 'package:isd/features/home/presentation/home_Screen.dart';
 import 'package:isd/features/home/presentation/view_model/all_trips_cubit/all_trips_cubit.dart';
 import 'package:isd/features/home/presentation/widgets/telemetry_cubit.dart';
 
@@ -28,6 +30,17 @@ class AIHelmetApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bool signedIn = false;
+    User? user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      // ✅ User already logged in
+      signedIn = true;
+    } else {
+      // ❌ Not logged in
+      signedIn = false;
+    }
+
     return MultiBlocProvider(
       providers: [
         BlocProvider<LoginCubit>(create: (_) => LoginCubit()),
@@ -52,11 +65,9 @@ class AIHelmetApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF0A0F1C),
-          colorScheme: const ColorScheme.dark(
-            secondary: Color(0xFF00D1FF),
-          ),
+          colorScheme: const ColorScheme.dark(secondary: Color(0xFF00D1FF)),
         ),
-        home: const SignInScreen(),
+        home: signedIn ? HomeScreen() : SignInScreen(),
       ),
     );
   }

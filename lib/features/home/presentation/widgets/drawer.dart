@@ -4,6 +4,7 @@ import 'package:isd/features/auth/presentation/view/signin.dart';
 
 class AppDrawer extends StatelessWidget {
   final VoidCallback? onMyTrips;
+  final VoidCallback? emergencyContacts;
   final VoidCallback? onAbout;
   final VoidCallback? onFaq;
   final Future<void> Function()? onSignOut;
@@ -11,6 +12,7 @@ class AppDrawer extends StatelessWidget {
   const AppDrawer({
     super.key,
     this.onMyTrips,
+    this.emergencyContacts,
     this.onAbout,
     this.onFaq,
     this.onSignOut,
@@ -64,6 +66,11 @@ class AppDrawer extends StatelessWidget {
               leading: const Icon(Icons.motorcycle_sharp),
               title: const Text('My Trips'),
               onTap: onMyTrips,
+            ),
+            ListTile(
+              leading: const Icon(Icons.contacts),
+              title: const Text('Emergency Contacts'),
+              onTap: emergencyContacts,
             ),
             ListTile(
               leading: const Icon(Icons.info_outline),
