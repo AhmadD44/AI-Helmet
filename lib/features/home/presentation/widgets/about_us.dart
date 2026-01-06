@@ -11,8 +11,12 @@ class AboutUsPage extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            'Your company description, mission, and contact info go here.',
+            'We are a cutting-edge technology company specializing in AI-powered helmets designed to enhance rider safety. '
+            'Our innovative helmets detect accidents in real-time and can automatically alert emergency services, '
+            'ensuring faster response and potentially saving lives. '
+            'Driven by safety, intelligence, and reliability, we aim to redefine the way riders protect themselves on the road.',
             textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16),
           ),
         ),
       ),

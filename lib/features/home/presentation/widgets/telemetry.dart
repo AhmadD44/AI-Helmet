@@ -1,5 +1,5 @@
-// lib/features/home/presentation/widgets/telemetry.dart
 import 'package:equatable/equatable.dart';
+import 'package:flutter/material.dart';
 
 class Telemetry extends Equatable {
   final int ts;  // timestamp
@@ -93,10 +93,10 @@ class HeartRateData extends Equatable {
   factory HeartRateData.fromJson(Map<String, dynamic> json) {
     return HeartRateData(
       ok: json['ok'] as bool? ?? false,
-      ir: (json['ir'] as num?)?.toInt(),
-      red: (json['red'] as num?)?.toInt(),
+      ir: (json['ir'] as num?)?.toInt() ?? 0,
+      red: (json['red'] as num?)?.toInt() ?? 0,
       finger: json['finger'] as bool? ?? false,
-      hr: (json['hr'] as num?)?.toInt(),
+      hr: (json['hr'] as num?)?.toInt() ?? 0,
       spo2: (json['spo2'] as num?)?.toInt(),
     );
   }
@@ -188,4 +188,112 @@ class VelocityData extends Equatable {
 
   @override
   List<Object?> get props => [kmh];
+}
+
+// RiskData class for RISK_STATUS messages from WebSocket
+class RiskData extends Equatable {
+  final String level; // NORMAL, MEDIUM, HIGH
+  final int score;
+  final List<String> reasons;
+  final double speedKmh;
+
+  const RiskData({
+    required this.level,
+    required this.score,
+    required this.reasons,
+    required this.speedKmh,
+  });
+
+  // In telemetry.dart, update the RiskData.fromJson factory:
+
+factory RiskData.fromJson(Map<String, dynamic> json) {
+  print('🔍 RiskData.fromJson called with: $json');
+  
+  try {
+    // Extract level
+    String level = 'NORMAL';
+    if (json['level'] != null) {
+      level = json['level'].toString().toUpperCase();
+    }
+    
+    // Extract score
+    int score = 0;
+    if (json['score'] != null) {
+      if (json['score'] is int) {
+        score = json['score'] as int;
+      } else if (json['score'] is double) {
+        score = (json['score'] as double).round();
+      } else if (json['score'] is String) {
+        score = int.tryParse(json['score'] as String) ?? 0;
+      }
+    }
+    
+    // Extract reasons
+    List<String> reasons = [];
+    if (json['reasons'] != null) {
+      if (json['reasons'] is List) {
+        for (var item in json['reasons']) {
+          if (item != null) {
+            reasons.add(item.toString());
+          }
+        }
+      } else if (json['reasons'] is String) {
+        reasons = [json['reasons'] as String];
+      }
+    }
+    
+    // Extract speed_kmh (note: underscore in JSON)
+    double speedKmh = 0.0;
+    if (json['speed_kmh'] != null) {
+      if (json['speed_kmh'] is int) {
+        speedKmh = (json['speed_kmh'] as int).toDouble();
+      } else if (json['speed_kmh'] is double) {
+        speedKmh = json['speed_kmh'] as double;
+      } else if (json['speed_kmh'] is String) {
+        speedKmh = double.tryParse(json['speed_kmh'] as String) ?? 0.0;
+      }
+    }
+    
+    final riskData = RiskData(
+      level: level,
+      score: score,
+      reasons: reasons,
+      speedKmh: speedKmh,
+    );
+    
+    print('✅ RiskData created: ${riskData.level} (${riskData.score})');
+    return riskData;
+    
+  } catch (e) {
+    print('❌ ERROR creating RiskData: $e');
+    // Return a default NORMAL risk if parsing fails
+    return RiskData(
+      level: 'NORMAL',
+      score: 0,
+      reasons: [],
+      speedKmh: 0.0,
+    );
+  }
+}
+  Color get color {
+    switch (level.toUpperCase()) {
+      case 'HIGH':
+        return Colors.red;
+      case 'MEDIUM':
+        return Colors.orange;
+      case 'NORMAL':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  bool get isCrash => level.toUpperCase() == 'HIGH';
+  
+  String get formattedReasons {
+    return reasons.map((r) => r.toUpperCase()).join(', ');
+  }
+
+  @override
+  List<Object?> get props => [level, score, reasons, speedKmh];
 }

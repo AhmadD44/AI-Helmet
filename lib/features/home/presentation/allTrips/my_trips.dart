@@ -176,7 +176,7 @@ class _TripCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    trip.tripId ?? 'Trip',
+                    'Trip',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
