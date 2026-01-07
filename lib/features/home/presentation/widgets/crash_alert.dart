@@ -3,9 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:location/location.dart';
+import 'package:isd/features/home/presentation/widgets/telemetry.dart';
 import 'package:sms_sender/sms_sender.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:isd/features/home/presentation/widgets/telemetry.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 class CrashAlertPage extends StatefulWidget {
   final RiskData riskData;
@@ -136,13 +137,21 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
     }
   }
 
-  void sendSms( List<String> phoneNumber,String message,) async {
-  for (var phone in phoneNumber) {
-  await SmsSender.sendSms(
-    phoneNumber: phone,
-    message: message,
-  );
-}
+  Future<void> sendSms(List<String> phoneNumbers, String message) async {
+  for (final phone in phoneNumbers) {
+    final uri = Uri.parse(
+      'sms:$phone?body=${Uri.encodeComponent(message)}',
+    );
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      debugPrint('❌ Could not open SMS app for $phone');
+    }
+
+    // small delay so Android doesn’t choke when opening multiple times
+    await Future.delayed(const Duration(milliseconds: 300));
+  }
 }
 
   void _handleCancel() {

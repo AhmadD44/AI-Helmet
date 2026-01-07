@@ -54,7 +54,7 @@ class AIHelmetApp extends StatelessWidget {
           create: (_) => TelemetryCubit(
             source: EspBtClassicSource(debugLog: true),
             ingest: IngestWsClient(
-              ingestUri: Uri.parse("ws://3.14.15.242:8000/ws/ingest"),
+              ingestUri: Uri.parse("ws://ec2-3-14-15-242.us-east-2.compute.amazonaws.com:8000/ws/ingest"),
               debugLog: true,
             ),
           ),

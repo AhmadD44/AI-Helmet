@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class EmergencyContactsScreen extends StatefulWidget {
-   // Pass the logged-in user's UID
-
   const EmergencyContactsScreen({super.key});
 
   @override
@@ -17,8 +15,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   final _contact2Controller = TextEditingController();
   bool _isLoading = true;
 
-  
-
   @override
   void initState() {
     super.initState();
@@ -26,45 +22,71 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
   }
 
   Future<void> _loadContacts() async {
-    final user = FirebaseAuth.instance.currentUser; 
-    final userId = user!.uid;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user!.uid;
 
-    final docRef =
-        FirebaseFirestore.instance.collection('users').doc(userId);
-    final snapshot = await docRef.get();
+      final docRef =
+          FirebaseFirestore.instance.collection('users').doc(userId);
+      final snapshot = await docRef.get();
 
-    if (snapshot.exists) {
-      _contact1Controller.text = snapshot.data()?['contact1'] ?? '';
-      _contact2Controller.text = snapshot.data()?['contact2'] ?? '';
+      if (snapshot.exists) {
+        final data = snapshot.data();
+        // Convert int to String safely
+        _contact1Controller.text =
+            data?['contact1'] != null ? data!['contact1'].toString() : '';
+        _contact2Controller.text =
+            data?['contact2'] != null ? data!['contact2'].toString() : '';
+      }
+    } catch (e) {
+      print('Error loading contacts: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   Future<void> _saveContacts() async {
     setState(() {
       _isLoading = true;
     });
-    final user = FirebaseAuth.instance.currentUser; 
-    final userId = user!.uid;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user!.uid;
 
+      final docRef =
+          FirebaseFirestore.instance.collection('users').doc(userId);
 
-    final docRef =
-        FirebaseFirestore.instance.collection('users').doc(userId);
-    await docRef.update({
-      'contact1': _contact1Controller.text.trim(),
-      'contact2': _contact2Controller.text.trim(),
-    });
+      // Convert text to int safely
+      final contact1 = int.tryParse(_contact1Controller.text.trim());
+      final contact2 = int.tryParse(_contact2Controller.text.trim());
 
-    setState(() {
-      _isLoading = false;
-    });
+      if (contact1 == null || contact2 == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter valid numbers!')),
+        );
+        return;
+      }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Contacts updated successfully!')),
-    );
+      await docRef.update({
+        'contact1': contact1,
+        'contact2': contact2,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contacts updated successfully!')),
+      );
+    } catch (e) {
+      print('Error saving contacts: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update contacts!')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   InputDecoration _inputDecoration(String label, IconData icon) {
@@ -99,13 +121,13 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                   TextField(
                     controller: _contact1Controller,
                     decoration: _inputDecoration('Contact 1', Icons.phone),
-                    keyboardType: TextInputType.phone,
+                    keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _contact2Controller,
                     decoration: _inputDecoration('Contact 2', Icons.phone),
-                    keyboardType: TextInputType.phone,
+                    keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(

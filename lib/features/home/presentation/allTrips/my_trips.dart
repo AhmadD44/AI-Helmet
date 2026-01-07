@@ -4,7 +4,6 @@ import 'package:isd/features/home/data/models/my_trips_model/all_trips_model.dar
 import 'package:isd/features/home/presentation/view_model/all_trips_cubit/all_trips_cubit.dart';
 import 'package:isd/features/home/presentation/view_model/all_trips_cubit/all_trips_state.dart';
 
-
 class MyTripsPage extends StatefulWidget {
   const MyTripsPage({super.key});
 
@@ -13,36 +12,28 @@ class MyTripsPage extends StatefulWidget {
 }
 
 class _MyTripsPageState extends State<MyTripsPage> {
-
-@override
-void initState() {
-  super.initState();
-  context.read<AllTripsCubit>().fetchAllTrips();
-}
-
+  @override
+  void initState() {
+    super.initState();
+    context.read<AllTripsCubit>().fetchAllTrips();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Trips'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('My Trips'), centerTitle: true),
       body: BlocBuilder<AllTripsCubit, AllTripsState>(
         builder: (context, state) {
-          
           final trips;
           if (state is AllTripsFailure) {
-            
             trips = [];
-            
+
             return _TripsError(message: state.errMessage);
-          }else if (state is AllTripsSuccess) {
-            
-           trips = state.trips;
-          }else {
-           trips = [];
-            
+          } else if (state is AllTripsSuccess) {
+            trips = state.trips;
+          } else {
+            trips = [];
+
             return const _TripsLoading();
           }
 
@@ -102,16 +93,12 @@ class _TripsHeader extends StatelessWidget {
             child: Text(
               'Your Trips',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
             ),
           ),
-          _Pill(
-            text: '$count',
-            icon: Icons.list_alt,
-            color: Colors.white70,
-          ),
+          _Pill(text: '$count', icon: Icons.list_alt, color: Colors.white70),
         ],
       ),
     );
@@ -152,7 +139,10 @@ class _TripCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: statusUi.borderColor, width: statusUi.borderWidth),
+          border: Border.all(
+            color: statusUi.borderColor,
+            width: statusUi.borderWidth,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.25),
@@ -176,11 +166,11 @@ class _TripCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    trip.tripId ?? 'Trip',
+                    'Trip',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -204,9 +194,9 @@ class _TripCard extends StatelessWidget {
                   child: Text(
                     'Device: ${trip.deviceId ?? '--'}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white60,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      color: Colors.white60,
+                      fontWeight: FontWeight.w600,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -238,7 +228,9 @@ class _TripCard extends StatelessWidget {
                 ),
                 _InfoChip(
                   icon: Icons.speed,
-                  label: speed == null ? '--' : '${speed.toStringAsFixed(1)} km/h',
+                  label: speed == null
+                      ? '--'
+                      : '${speed.toStringAsFixed(1)} km/h',
                 ),
               ],
             ),
@@ -250,13 +242,15 @@ class _TripCard extends StatelessWidget {
               child: TextButton.icon(
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Trip details screen coming soon')),
+                    const SnackBar(
+                      content: Text('Trip details screen coming soon'),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.chevron_right),
                 label: const Text('View details'),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -286,7 +280,9 @@ class _TripCard extends StatelessWidget {
         glowColor: null,
       );
     }
-    if (status.contains('progress') || status.contains('active') || status.contains('running')) {
+    if (status.contains('progress') ||
+        status.contains('active') ||
+        status.contains('running')) {
       return const _StatusUi(
         label: 'In progress',
         icon: Icons.timelapse,
@@ -373,9 +369,9 @@ class _TripsEmpty extends StatelessWidget {
         child: Text(
           'No trips yet.',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-              ),
+            color: Colors.white70,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -394,9 +390,9 @@ class _TripsError extends StatelessWidget {
         child: Text(
           message,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFFFF3B30),
-                fontWeight: FontWeight.w700,
-              ),
+            color: const Color(0xFFFF3B30),
+            fontWeight: FontWeight.w700,
+          ),
           textAlign: TextAlign.center,
         ),
       ),
@@ -429,9 +425,9 @@ class _InfoChip extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w600,
-                ),
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -444,11 +440,7 @@ class _Pill extends StatelessWidget {
   final IconData icon;
   final Color color;
 
-  const _Pill({
-    required this.text,
-    required this.icon,
-    required this.color,
-  });
+  const _Pill({required this.text, required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -467,9 +459,9 @@ class _Pill extends StatelessWidget {
           Text(
             text,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),

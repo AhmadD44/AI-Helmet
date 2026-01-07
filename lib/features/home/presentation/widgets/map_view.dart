@@ -15,7 +15,7 @@ class MapView extends StatefulWidget {
   final latlng.LatLng? initialLocation;  // For initial map center
   final latlng.LatLng? destination;
   final bool tripActive;
-  final void Function(latlng.LatLng dest)? onDestinationSelected;
+  final void Function(latlng.LatLng? dest)? onDestinationSelected; // Changed to nullable
   final void Function(bool isTripActive)? onTripStatusChanged;
   final void Function(latlng.LatLng destination)? onTripStarted;
   final void Function(List<latlng.LatLng> routePoints)? onRouteCalculated;
@@ -140,6 +140,27 @@ class MapViewState extends State<MapView> {
     }
   }
 
+  // Check if two points are close enough to be considered the same
+  bool _isSameLocation(latlng.LatLng point1, latlng.LatLng point2) {
+    // Tolerance of 0.0001 degrees (approx 11 meters)
+    final latDiff = (point1.latitude - point2.latitude).abs();
+    final lngDiff = (point1.longitude - point2.longitude).abs();
+    return latDiff < 0.0001 && lngDiff < 0.0001;
+  }
+
+  // Handle map tap - toggles destination on/off
+  void _handleMapTap(latlng.LatLng point) {
+    if (widget.onDestinationSelected != null) {
+      // If there's a current destination and user taps near it, remove it
+      if (widget.destination != null && _isSameLocation(point, widget.destination!)) {
+        widget.onDestinationSelected!(null);
+      } else {
+        // Otherwise, set the new destination
+        widget.onDestinationSelected!(point);
+      }
+    }
+  }
+
   Future<void> _initMobileGps() async {
     try {
       bool serviceEnabled = await _location.serviceEnabled();
@@ -228,8 +249,18 @@ class MapViewState extends State<MapView> {
     }
     
     // Calculate route when destination changes
-    if (widget.destination != oldWidget.destination && widget.destination != null) {
-      _calculateRoute();
+    if (widget.destination != oldWidget.destination) {
+      if (widget.destination != null) {
+        _calculateRoute();
+      } else {
+        // Clear route when destination is removed
+        _routePoints.clear();
+        _routeDistance = 0.0;
+        _routeDuration = 0;
+        if (mounted) {
+          setState(() {});
+        }
+      }
     }
   }
 
@@ -252,9 +283,7 @@ class MapViewState extends State<MapView> {
             initialCenter: currentLocation,
             initialZoom: initialZoom,
             onTap: (tapPosition, point) {
-              if (widget.onDestinationSelected != null) {
-                widget.onDestinationSelected!(point);
-              }
+              _handleMapTap(point);
             },
           ),
           children: [
@@ -504,9 +533,9 @@ class MapViewState extends State<MapView> {
                         '${_routeDistance.toStringAsFixed(1)} km',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
                       ),
                     ),
                 ],

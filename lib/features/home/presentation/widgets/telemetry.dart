@@ -276,6 +276,9 @@ factory RiskData.fromJson(Map<String, dynamic> json) {
     );
   }
 }
+
+
+
   Color get color {
     switch (level.toUpperCase()) {
       case 'HIGH':
@@ -294,6 +297,8 @@ factory RiskData.fromJson(Map<String, dynamic> json) {
   String get formattedReasons {
     return reasons.map((r) => r.toUpperCase()).join(', ');
   }
+
+  
 
   @override
   List<Object?> get props => [level, score, reasons, speedKmh];

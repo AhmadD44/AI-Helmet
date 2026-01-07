@@ -18,4 +18,7 @@ class AllTripsCubit extends Cubit<AllTripsState>{
         emit(AllTripsSuccess(allTrips));
     });
   }
+
+  
+  
 }

@@ -4,6 +4,7 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:isd/core/errors/flutter_bl_handler.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:isd/features/home/data/esp_classic_bt_msgpack_source.dart';
@@ -60,22 +61,22 @@ class TelemetryState extends Equatable {
 
   @override
   List<Object?> get props => [
-        loading,
-        error,
-        data,
-        connected,
-        wsConnected,
-        packetsSent,
-        connectionStatus,
-        currentRisk,
-        riskWsConnected,
-      ];
+    loading,
+    error,
+    data,
+    connected,
+    wsConnected,
+    packetsSent,
+    connectionStatus,
+    currentRisk,
+    riskWsConnected,
+  ];
 }
 
 class TelemetryCubit extends Cubit<TelemetryState> {
   final EspBtClassicSource source;
   final IngestWsClient ingest;
-  
+
   WebSocketChannel? _riskWebSocket;
   StreamSubscription? _riskWebSocketSubscription;
 
@@ -83,11 +84,10 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   bool _starting = false;
   String? _mac;
   int _packetsSent = 0;
-  
+
   final _jsonBufferHelper = JsonBufferHelper();
 
   final userForJwt = FirebaseAuth.instance.currentUser;
-          
 
   Timer? _healthTimer;
   DateTime? _lastDataTime;
@@ -95,7 +95,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   static const Duration dataTimeout = Duration(seconds: 15);
 
   TelemetryCubit({required this.source, required this.ingest})
-      : super(const TelemetryState()) {
+    : super(const TelemetryState()) {
     _connectToRiskWebSocket();
   }
 
@@ -103,17 +103,17 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     try {
       final token = await userForJwt?.getIdToken();
       print('🌐 Connecting to Risk WebSocket...');
-      
+
       final riskWsUri = Uri(
-      scheme: 'ws',
-      host: '3.14.15.242',
-      port: 8000,
-      path: '/ws/stream',
-      queryParameters: {'token': token},
-    );
-      
+        scheme: 'ws',
+        host: 'ec2-3-14-15-242.us-east-2.compute.amazonaws.com',
+        port: 8000,
+        path: '/ws/stream',
+        queryParameters: {'token': token},
+      );
+
       _riskWebSocket = WebSocketChannel.connect(riskWsUri);
-      
+
       _riskWebSocketSubscription = _riskWebSocket!.stream.listen(
         (message) {
           _handleRiskWebSocketMessage(message);
@@ -129,10 +129,9 @@ class TelemetryCubit extends Cubit<TelemetryState> {
           _reconnectRiskWebSocket();
         },
       );
-      
+
       emit(state.copyWith(riskWsConnected: true));
       print('✅ Risk WebSocket connected');
-      
     } catch (e) {
       print('❌ Failed to connect to Risk WebSocket: $e');
       emit(state.copyWith(riskWsConnected: false));
@@ -143,23 +142,20 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   void _handleRiskWebSocketMessage(dynamic message) {
     try {
       print('📥 Risk WebSocket message: $message');
-      
+
       if (message is String) {
         final data = jsonDecode(message);
-        
+
         if (data['type'] == 'RISK_STATUS') {
           print('🎯 RISK_STATUS received from WebSocket!');
-          
+
           final riskPayload = data['payload'];
           if (riskPayload != null && riskPayload is Map<String, dynamic>) {
             try {
               final riskData = RiskData.fromJson(riskPayload);
               print('   ✅ Risk parsed: ${riskData.level} (${riskData.score})');
-              
-              emit(state.copyWith(
-                currentRisk: riskData,
-              ));
-              
+
+              emit(state.copyWith(currentRisk: riskData));
             } catch (e) {
               print('❌ Error parsing risk data: $e');
             }
@@ -185,28 +181,32 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     _starting = true;
     _mac = mac;
     _jsonBufferHelper.clear();
-    
-    emit(TelemetryState(
-      loading: true,
-      data: state.data,
-      currentRisk: state.currentRisk,
-      riskWsConnected: state.riskWsConnected,
-      error: null,
-      connected: false,
-      connectionStatus: "Checking permissions...",
-    ));
-    
-    final hasPermissions = await _checkBluetoothPermissions();
-    if (!hasPermissions) {
-      emit(TelemetryState(
-        loading: false,
-        error: "Bluetooth permissions required.",
+
+    emit(
+      TelemetryState(
+        loading: true,
         data: state.data,
         currentRisk: state.currentRisk,
         riskWsConnected: state.riskWsConnected,
+        error: null,
         connected: false,
-        connectionStatus: "Permissions needed",
-      ));
+        connectionStatus: "Checking permissions...",
+      ),
+    );
+
+    final hasPermissions = await _checkBluetoothPermissions();
+    if (!hasPermissions) {
+      emit(
+        TelemetryState(
+          loading: false,
+          error: "Bluetooth permissions required.",
+          data: state.data,
+          currentRisk: state.currentRisk,
+          riskWsConnected: state.riskWsConnected,
+          connected: false,
+          connectionStatus: "Permissions needed",
+        ),
+      );
       _starting = false;
       return;
     }
@@ -214,112 +214,120 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     bool connected = false;
     int retryCount = 0;
     const int maxRetries = 2;
-    
+
     while (!connected && retryCount < maxRetries) {
       try {
-        emit(state.copyWith(
-          connectionStatus: retryCount == 0 
-              ? "Connecting to device..." 
-              : "Retrying connection... (${retryCount + 1}/$maxRetries)",
-        ));
+        emit(
+          state.copyWith(
+            connectionStatus: retryCount == 0
+                ? "Connecting to device..."
+                : "Retrying connection... (${retryCount + 1}/$maxRetries)",
+          ),
+        );
 
         _connectWebSocketInBackground();
 
         await source.connect(mac).timeout(const Duration(seconds: 15));
-        
-        emit(state.copyWith(
-          connectionStatus: "Setting up connection...",
-        ));
-        
+
+        emit(state.copyWith(connectionStatus: "Setting up connection..."));
+
         await _setupStreamListener();
-        
+
         _startHealthMonitoring();
-        
+
         connected = true;
-        emit(TelemetryState(
-          loading: false,
-          error: null,
-          data: state.data,
-          currentRisk: state.currentRisk,
-          riskWsConnected: state.riskWsConnected,
-          connected: true,
-          wsConnected: state.wsConnected,
-          connectionStatus: "Connected",
-        ));
-        
+       await sendUidToServer();
+
+        emit(
+          TelemetryState(
+            loading: false,
+            error: null,
+            data: state.data,
+            currentRisk: state.currentRisk,
+            riskWsConnected: state.riskWsConnected,
+            connected: true,
+            wsConnected: state.wsConnected,
+            connectionStatus: "Connected",
+          ),
+        );
       } on TimeoutException {
         retryCount++;
         if (retryCount < maxRetries) {
           await Future.delayed(const Duration(seconds: 2));
           continue;
         }
-        
-        emit(TelemetryState(
-          loading: false,
-          error: "Connection timeout.",
-          data: state.data,
-          currentRisk: state.currentRisk,
-          riskWsConnected: state.riskWsConnected,
-          connected: false,
-          connectionStatus: "Timeout",
-        ));
+
+        emit(
+          TelemetryState(
+            loading: false,
+            error: "Connection timeout.",
+            data: state.data,
+            currentRisk: state.currentRisk,
+            riskWsConnected: state.riskWsConnected,
+            connected: false,
+            connectionStatus: "Timeout",
+          ),
+        );
         _scheduleReconnect();
-        
       } on Exception catch (e) {
         retryCount++;
-        
+
         final errorMessage = _parseConnectionError(e);
-        
+
         if (retryCount < maxRetries) {
           print("⚠️ Connection failed, retrying... ($retryCount/$maxRetries)");
           await Future.delayed(const Duration(seconds: 2));
           continue;
         }
-        
-        emit(TelemetryState(
-          loading: false,
-          error: errorMessage,
-          data: state.data,
-          currentRisk: state.currentRisk,
-          riskWsConnected: state.riskWsConnected,
-          connected: false,
-          connectionStatus: "Failed",
-        ));
-        
-        if (!errorMessage.contains("paired") && 
+
+        emit(
+          TelemetryState(
+            loading: false,
+            error: errorMessage,
+            data: state.data,
+            currentRisk: state.currentRisk,
+            riskWsConnected: state.riskWsConnected,
+            connected: false,
+            connectionStatus: "Failed",
+          ),
+        );
+
+        if (!errorMessage.contains("paired") &&
             !errorMessage.contains("permission") &&
             !errorMessage.contains("not found")) {
           _scheduleReconnect();
         }
       }
     }
-    
+
     _starting = false;
   }
 
   String _parseConnectionError(Exception e) {
     final errorStr = e.toString();
-    
-    if (errorStr.contains("connection_failed") || errorStr.contains("could not connect")) {
+
+    if (errorStr.contains("connection_failed") ||
+        errorStr.contains("could not connect")) {
       return "Failed to connect to device.";
     }
-    
+
     if (errorStr.contains("bluetooth_disabled")) {
       return "Bluetooth is disabled.";
     }
-    
+
     if (errorStr.contains("permission") || errorStr.contains("denied")) {
       return "Bluetooth permission denied.";
     }
-    
-    if (errorStr.contains("device_not_found") || errorStr.contains("not found")) {
+
+    if (errorStr.contains("device_not_found") ||
+        errorStr.contains("not found")) {
       return "Device not found.";
     }
-    
+
     if (errorStr.contains("already_connected")) {
       return "Already connected to this device.";
     }
-    
+
     return "Connection failed.";
   }
 
@@ -331,10 +339,10 @@ class TelemetryCubit extends Cubit<TelemetryState> {
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
         ].request();
-        
+
         return permissions[Permission.locationWhenInUse]?.isGranted == true &&
-               permissions[Permission.bluetoothScan]?.isGranted == true &&
-               permissions[Permission.bluetoothConnect]?.isGranted == true;
+            permissions[Permission.bluetoothScan]?.isGranted == true &&
+            permissions[Permission.bluetoothConnect]?.isGranted == true;
       } catch (e) {
         print('⚠️ Permission check error: $e');
         return false;
@@ -349,24 +357,26 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     _sub = source.stream.listen(
       (payload) async {
         _lastDataTime = DateTime.now();
-        
+
         Telemetry? telemetry;
-        
+
         if (payload is String) {
           telemetry = _parseTelemetryFromString(payload as String);
         } else if (payload is Map<String, dynamic>) {
           telemetry = _parseTelemetryFromMap(payload);
-          
+
           _sendToWebSocket(payload);
         }
-        
+
         if (telemetry != null) {
-          emit(state.copyWith(
-            data: telemetry,
-            error: null,
-            connected: true,
-            connectionStatus: "Receiving data",
-          ));
+          emit(
+            state.copyWith(
+              data: telemetry,
+              error: null,
+              connected: true,
+              connectionStatus: "Receiving data",
+            ),
+          );
         }
       },
       onError: (error) {
@@ -386,28 +396,28 @@ class TelemetryCubit extends Cubit<TelemetryState> {
           .replaceAll('\x00', '')
           .replaceAll('\r', '')
           .trim();
-      
+
       if (!cleanedData.startsWith('{')) {
         int jsonStart = cleanedData.indexOf('{');
         if (jsonStart != -1) {
           cleanedData = cleanedData.substring(jsonStart);
         }
       }
-      
+
       _jsonBufferHelper.addChunk(cleanedData);
       final completeJsons = _jsonBufferHelper.extractCompleteJsons();
-      
+
       if (completeJsons.isNotEmpty) {
         Telemetry? latestTelemetry;
-        
+
         for (final jsonData in completeJsons) {
           _sendToWebSocket(jsonData);
           latestTelemetry = _parseTelemetryFromMap(jsonData);
         }
-        
+
         return latestTelemetry;
       }
-      
+
       return null;
     } catch (e) {
       print('❌ Error parsing string to telemetry: $e');
@@ -418,14 +428,15 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   Telemetry? _parseTelemetryFromMap(Map<String, dynamic> payload) {
     try {
       final convertedPayload = _convertNumbers(payload);
-      
-      final deviceIdFromJson = convertedPayload['device_id'] as String? ?? 'HELMET_001';
-      
+
+      final deviceIdFromJson =
+          convertedPayload['device_id'] as String? ?? 'HELMET_001';
+
       final enhancedPayload = Map<String, dynamic>.from(convertedPayload);
       enhancedPayload['device_id'] = deviceIdFromJson;
-      
+
       final telemetry = Telemetry.fromJson(enhancedPayload);
-      
+
       return telemetry;
     } catch (e) {
       print('❌ Error parsing map to telemetry: $e');
@@ -472,12 +483,14 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   void _handleStreamError(error) {
     if (error.toString().contains("disconnected") ||
         error.toString().contains("connection")) {
-      emit(state.copyWith(
-        connected: false,
-        connectionStatus: "Disconnected",
-        error: "Lost connection to device",
-      ));
-      
+      emit(
+        state.copyWith(
+          connected: false,
+          connectionStatus: "Disconnected",
+          error: "Lost connection to device",
+        ),
+      );
+
       _jsonBufferHelper.clear();
       _scheduleReconnect();
     }
@@ -485,40 +498,44 @@ class TelemetryCubit extends Cubit<TelemetryState> {
 
   void _handleStreamClosed() {
     if (state.connected) {
-      emit(state.copyWith(
-        connected: false,
-        connectionStatus: "Connection closed",
-        error: "Connection closed unexpectedly",
-      ));
+      emit(
+        state.copyWith(
+          connected: false,
+          connectionStatus: "Connection closed",
+          error: "Connection closed unexpectedly",
+        ),
+      );
       _jsonBufferHelper.clear();
       _scheduleReconnect();
     }
   }
 
   Future<void> _connectWebSocketInBackground() async {
-    unawaited(Future(() async {
-      try {
-        await ingest.connect();
-        if (state.wsConnected == false) {
-          emit(state.copyWith(wsConnected: true));
+    unawaited(
+      Future(() async {
+        try {
+          await ingest.connect();
+          if (state.wsConnected == false) {
+            emit(state.copyWith(wsConnected: true));
+          }
+        } catch (e) {
+          print('⚠️ WebSocket connect failed: $e');
         }
-      } catch (e) {
-        print('⚠️ WebSocket connect failed: $e');
-      }
-    }));
+      }),
+    );
   }
 
   Future<void> _sendToWebSocket(Map<String, dynamic> payload) async {
     try {
       final enhancedPayload = Map<String, dynamic>.from(payload);
-      
+
       final jsonString = jsonEncode(enhancedPayload);
-      
+
       print("📤 Sending telemetry to WebSocket: ${jsonString.length} bytes");
 
       await ingest.send(enhancedPayload);
       _packetsSent++;
-      
+
       if (_packetsSent % 10 == 0) {
         emit(state.copyWith(packetsSent: _packetsSent));
       }
@@ -534,14 +551,11 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   void _startHealthMonitoring() {
     _healthTimer?.cancel();
     _healthTimer = Timer.periodic(healthCheckInterval, (timer) {
-      if (_lastDataTime != null && 
+      if (_lastDataTime != null &&
           DateTime.now().difference(_lastDataTime!) > dataTimeout &&
           state.connected) {
-        
         if (state.connectionStatus != "Connected (Idle)") {
-          emit(state.copyWith(
-            connectionStatus: "Connected (Idle)",
-          ));
+          emit(state.copyWith(connectionStatus: "Connected (Idle)"));
         }
       }
     });
@@ -559,25 +573,27 @@ class TelemetryCubit extends Cubit<TelemetryState> {
   Future<void> disconnect() async {
     _healthTimer?.cancel();
     _healthTimer = null;
-    
+
     await _sub?.cancel();
     _sub = null;
-    
+
     _jsonBufferHelper.clear();
-    
+
     try {
       await source.disconnect();
     } catch (_) {}
-    
-    emit(TelemetryState(
-      loading: false,
-      error: null,
-      data: state.data,
-      currentRisk: state.currentRisk,
-      riskWsConnected: state.riskWsConnected,
-      connected: false,
-      connectionStatus: "Disconnected",
-    ));
+
+    emit(
+      TelemetryState(
+        loading: false,
+        error: null,
+        data: state.data,
+        currentRisk: state.currentRisk,
+        riskWsConnected: state.riskWsConnected,
+        connected: false,
+        connectionStatus: "Disconnected",
+      ),
+    );
   }
 
   Future<void> reconnect() async {
@@ -588,9 +604,39 @@ class TelemetryCubit extends Cubit<TelemetryState> {
 
   void updateRiskData(RiskData riskData) {
     print('🔄 Manually updating risk data: ${riskData.level}');
-    emit(state.copyWith(
-      currentRisk: riskData,
-    ));
+    emit(state.copyWith(currentRisk: riskData));
+  }
+
+  Future<void> sendUidToServer() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print("❌ No logged-in user found");
+        return;
+      }
+      final idToken = await user.getIdToken();
+      // final uid = user.uid;
+      final url = Uri.parse(
+        'http://ec2-3-14-15-242.us-east-2.compute.amazonaws.com:8000/api/v1/devices',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $idToken',  // 👈 ADD TOKEN HERE
+  },
+        body: jsonEncode({"device_id": "HELMET_001", "model_name": "Smart Helmet v1"}),
+      );
+
+      if (response.statusCode == 200) {
+        print("✅ UID sent successfully: ${response.body}");
+      } else {
+        print("⚠️ Failed to send UID. Status: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("❌ Error sending UID: $e");
+    }
   }
 
   @override
@@ -599,7 +645,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
     _riskWebSocketSubscription = null;
     await _riskWebSocket?.sink.close();
     _riskWebSocket = null;
-    
+
     _healthTimer?.cancel();
     await _sub?.cancel();
     _jsonBufferHelper.clear();

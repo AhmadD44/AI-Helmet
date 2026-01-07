@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:isd/features/home/presentation/widgets/crash_alert.dart';
 import 'package:isd/features/home/presentation/widgets/risk_indicator.dart';
+import 'package:isd/features/home/presentation/widgets/update_contacts.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 import 'package:permission_handler/permission_handler.dart';
 
@@ -771,38 +772,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           
           // Risk WebSocket Status
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: state.riskWsConnected ? Colors.green : Colors.orange,
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.cloud,
-                  size: 20,
-                  color: state.riskWsConnected ? Colors.green : Colors.orange,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    state.riskWsConnected 
-                        ? "Risk monitoring: Connected"
-                        : "Risk monitoring: Connecting...",
-                    style: TextStyle(
-                      color: state.riskWsConnected ? Colors.green : Colors.orange,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Container(
+          //   padding: const EdgeInsets.all(12),
+          //   decoration: BoxDecoration(
+          //     color: Colors.grey[900],
+          //     borderRadius: BorderRadius.circular(12),
+          //     border: Border.all(
+          //       color: state.riskWsConnected ? Colors.green : Colors.orange,
+          //       width: 1,
+          //     ),
+          //   ),
+          //   // child: Row(
+          //   //   children: [
+          //   //     Icon(
+          //   //       Icons.cloud,
+          //   //       size: 20,
+          //   //       color: state.riskWsConnected ? Colors.green : Colors.orange,
+          //   //     ),
+          //   //     const SizedBox(width: 10),
+          //   //     Expanded(
+          //   //       child: Text(
+          //   //         state.riskWsConnected 
+          //   //             ? "Risk monitoring: Connected"
+          //   //             : "Risk monitoring: Connecting...",
+          //   //         style: TextStyle(
+          //   //           color: state.riskWsConnected ? Colors.green : Colors.orange,
+          //   //           fontSize: 13,
+          //   //         ),
+          //   //       ),
+          //   //     ),
+          //   //   ],
+          //   // ),
+          // ),
         ],
       ),
     );
@@ -883,6 +884,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       drawer: AppDrawer(
         onMyTrips: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const MyTripsPage()),
+        ),
+        emergencyContacts: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const EmergencyContactsScreen()),
         ),
         onAbout: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const AboutUsPage()),
