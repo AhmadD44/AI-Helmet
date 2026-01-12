@@ -2,7 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 
 class Telemetry extends Equatable {
-  final int ts;  // timestamp
+  final int ts; 
   final String deviceId;
   final bool helmetOn;
   
@@ -42,7 +42,6 @@ class Telemetry extends Equatable {
   }
   
 
-  // Helper getters for convenience
   int? get heart => heartRate?.hr;
   int? get spo2 => heartRate?.spo2;
   bool get fingerDetected => heartRate?.finger ?? false;
@@ -191,9 +190,8 @@ class VelocityData extends Equatable {
   List<Object?> get props => [kmh];
 }
 
-// RiskData class for RISK_STATUS messages from WebSocket
 class RiskData extends Equatable {
-  final String level; // NORMAL, MEDIUM, HIGH
+  final String level;
   final int score;
   final List<String> reasons;
   final double speedKmh;
@@ -205,19 +203,16 @@ class RiskData extends Equatable {
     required this.speedKmh,
   });
 
-  // In telemetry.dart, update the RiskData.fromJson factory:
 
 factory RiskData.fromJson(Map<String, dynamic> json) {
   print('🔍 RiskData.fromJson called with: $json');
   
   try {
-    // Extract level
     String level = 'NORMAL';
     if (json['level'] != null) {
       level = json['level'].toString().toUpperCase();
     }
     
-    // Extract score
     int score = 0;
     if (json['score'] != null) {
       if (json['score'] is int) {
@@ -229,7 +224,6 @@ factory RiskData.fromJson(Map<String, dynamic> json) {
       }
     }
     
-    // Extract reasons
     List<String> reasons = [];
     if (json['reasons'] != null) {
       if (json['reasons'] is List) {
@@ -243,7 +237,6 @@ factory RiskData.fromJson(Map<String, dynamic> json) {
       }
     }
     
-    // Extract speed_kmh (note: underscore in JSON)
     double speedKmh = 0.0;
     if (json['speed_kmh'] != null) {
       if (json['speed_kmh'] is int) {
@@ -267,7 +260,6 @@ factory RiskData.fromJson(Map<String, dynamic> json) {
     
   } catch (e) {
     print('❌ ERROR creating RiskData: $e');
-    // Return a default NORMAL risk if parsing fails
     return RiskData(
       level: 'NORMAL',
       score: 0,

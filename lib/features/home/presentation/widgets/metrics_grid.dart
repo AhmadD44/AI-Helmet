@@ -13,7 +13,6 @@ class MetricsGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = telemetry;
 
-    // 1. Heart Rate & SpO2
     final heartRate = t?.heartRate;
     final hr = heartRate?.hr;
     final hrValue = hr == null ? '--' : '$hr bpm';
@@ -21,7 +20,6 @@ class MetricsGrid extends StatelessWidget {
     final spo2Value = spo2 == null ? '--' : '$spo2%';
     final fingerDetected = heartRate?.finger ?? false;
     
-    // 2. GPS Coordinates
     final gps = t?.gps;
     final gpsValue = (gps == null || !gps.lock)
     ? '--'
@@ -29,18 +27,15 @@ class MetricsGrid extends StatelessWidget {
     final gpsLock = gps?.lock ?? false;
     final satellites = gps?.sats ?? 0;
 
-    // 3. Helmet Status
     final helmetOn = t?.helmetOn ?? false;
     final helmetValue = helmetOn ? 'ON' : 'OFF';
     final helmetColor = helmetOn ? Colors.green : Colors.orange;
 
-    // 4. Velocity/Speed
     final velocity = t?.speed;
     final speedValue = velocity == null 
         ? '-- km/h' 
         : '${velocity.toStringAsFixed(1)} km/h';
 
-    // 5. Accelerometer (G-Force calculated from ax, ay, az)
     final gForce = _calculateGForce(t?.ax, t?.ay, t?.az);
     final gForceValue = gForce?.toStringAsFixed(2) ?? '--';
     final accelDetails = 'G: $gForceValue g\n'
@@ -48,27 +43,21 @@ class MetricsGrid extends StatelessWidget {
         'Y: ${t?.ay?.toStringAsFixed(2) ?? '--'} m/s²\n'
         'Z: ${t?.az?.toStringAsFixed(2) ?? '--'} m/s²';
 
-    // 6. Gyroscope
     final gyroDetails = t?.imu?.ok == true
         ? 'X: ${t?.gx?.toStringAsFixed(2) ?? '--'}°/s\n'
           'Y: ${t?.gy?.toStringAsFixed(2) ?? '--'}°/s\n'
           'Z: ${t?.gz?.toStringAsFixed(2) ?? '--'}°/s'
         : 'No gyro data';
 
-    // 7. Device Info & Timestamp
     final deviceId = t?.deviceId ?? '--';
     final timestamp = _formatTimestamp(t?.ts ?? 0);
 
     return BlocBuilder<TelemetryCubit, TelemetryState>(
       builder: (context, state) {
-        // Get current risk from TelemetryCubit
         final currentRisk = state.currentRisk;
         
-        // Create risk card data
         final riskValue = currentRisk != null
             ? ' ${currentRisk.level}\n'
-              // 'Score: ${currentRisk.score}\n'
-              // 'Speed: ${currentRisk.speedKmh.toStringAsFixed(0)} km/h'
             : 'No risk data';
         
         final riskColor = currentRisk?.color ?? Colors.grey;
@@ -84,7 +73,6 @@ class MetricsGrid extends StatelessWidget {
             crossAxisSpacing: 12,
             childAspectRatio: 1.25,
             children: [
-              // Card 1: Heart Rate
               _Card(
                 icon: Icons.favorite,
                 title: 'Heart Rate',
@@ -110,7 +98,6 @@ class MetricsGrid extends StatelessWidget {
                     : null,
               ),
 
-              //Risk Status
 
               _Card(
                 icon: Icons.shield_outlined,
@@ -144,7 +131,6 @@ class MetricsGrid extends StatelessWidget {
                     : null,
               ),
 
-              // Card 3: Helmet Status
               _Card(
                 icon: helmetOn ? Icons.check_circle_outline : Icons.error_outline,
                 title: 'Helmet',
@@ -173,7 +159,6 @@ class MetricsGrid extends StatelessWidget {
                 ),
               ),
 
-              // Card 4: Speed
               _Card(
                 icon: Icons.speed_outlined,
                 title: 'Speed',
@@ -203,7 +188,6 @@ class MetricsGrid extends StatelessWidget {
                     : null,
               ),
 
-              // Card 5: Accelerometer
               _Card(
                 icon: Icons.directions_run_outlined,
                 title: 'Acceleration',
@@ -212,7 +196,6 @@ class MetricsGrid extends StatelessWidget {
                 subtitle: 'G-Force: $gForceValue g',
               ),
 
-              // Card 6: Gyroscope
               _Card(
                 icon: Icons.cached,
                 title: 'Gyroscope',
@@ -221,7 +204,6 @@ class MetricsGrid extends StatelessWidget {
                 subtitle: 'Rotation rate',
               ),
 
-              // Card 7: Device Info
               _Card(
                 icon: Icons.device_hub,
                 title: 'Device',
@@ -230,7 +212,6 @@ class MetricsGrid extends StatelessWidget {
                 subtitle: 'Helmet ID',
               ),
 
-              // Card 8: Last Update
               _Card(
                 icon: Icons.access_time,
                 title: 'Last Update',
@@ -239,7 +220,6 @@ class MetricsGrid extends StatelessWidget {
                 subtitle: 'Time received',
               ),
 
-              // Card 2: GPS
               _Card(
                 icon: gpsLock ? Icons.gps_fixed : Icons.gps_off,
                 title: 'GPS',
@@ -274,14 +254,12 @@ class MetricsGrid extends StatelessWidget {
     );
   }
 
-  // Helper to calculate G-Force from accelerometer data
   double? _calculateGForce(double? ax, double? ay, double? az) {
     if (ax == null || ay == null || az == null) return null;
     final magnitude = math.sqrt(ax * ax + ay * ay + az * az);
     return magnitude / 9.80665;
   }
 
-  // Helper to format timestamp
   String _formatTimestamp(int ts) {
     final now = DateTime.now();
     return '${now.hour.toString().padLeft(2, '0')}:'
@@ -289,7 +267,6 @@ class MetricsGrid extends StatelessWidget {
            '${now.second.toString().padLeft(2, '0')}';
   }
   
-  // Helper to get SpO2 color based on value
   Color _getSpo2Color(int spo2) {
     if (spo2 >= 95) return Colors.green;
     if (spo2 >= 90) return Colors.orange;

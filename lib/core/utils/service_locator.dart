@@ -1,4 +1,3 @@
-//This file to avoid making too much objects only one dio-apiService-....
 
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';

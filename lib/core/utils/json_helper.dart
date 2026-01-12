@@ -4,7 +4,6 @@ class JsonBufferHelper {
   String _buffer = '';
   
   void addChunk(String chunk) {
-    // Clean the chunk first
     chunk = chunk.replaceAll('\x00', '').trim();
     _buffer += chunk;
   }
@@ -29,7 +28,6 @@ class JsonBufferHelper {
           results.add(converted.cast<String, dynamic>());
         }
       } catch (e) {
-        // Try to fix and parse
         final fixedJson = _tryFixJson(jsonStr);
         try {
           final decoded = jsonDecode(fixedJson);
@@ -40,9 +38,7 @@ class JsonBufferHelper {
           } else if (converted is Map) {
             results.add(converted.cast<String, dynamic>());
           }
-        } catch (e2) {
-          // Couldn't parse
-        }
+        } catch (e2) {}
       }
       
       _buffer = _buffer.substring(result.endIndex + 1).trimLeft();
@@ -91,14 +87,13 @@ class JsonBufferHelper {
               endIndex: i,
             );
           } else if (braceCount < 0) {
-            // Malformed - more closing than opening
             return null;
           }
         }
       }
     }
     
-    return null; // No complete JSON found
+    return null; 
   }
   
   dynamic _convertNumbers(dynamic value) {
@@ -111,7 +106,6 @@ class JsonBufferHelper {
     } else if (value is List) {
       return value.map(_convertNumbers).toList();
     } else if (value is String) {
-      // Try to convert numeric strings
       if (_isNumeric(value)) {
         if (value.contains('.') || value.contains('e') || value.contains('E')) {
           try {
@@ -141,13 +135,10 @@ class JsonBufferHelper {
   String _tryFixJson(String jsonStr) {
     String working = jsonStr.trim();
     
-    // Count braces
     int openBraces = '${working.split('{').length - 1}' as int;
     int closeBraces = '${working.split('}').length - 1}' as int;
     
-    // Fix common ESP32 telemetry issues
     if (working.contains('"velocity":{"kmh":0')) {
-      // Make sure it ends properly
       if (!working.endsWith('}}')) {
         if (working.endsWith('}')) {
           working += '}';
@@ -157,7 +148,6 @@ class JsonBufferHelper {
       }
     }
     
-    // Balance braces
     while (closeBraces > openBraces && working.endsWith('}')) {
       working = working.substring(0, working.length - 1);
       closeBraces = '${working.split('}').length - 1}' as int;
@@ -172,7 +162,6 @@ class JsonBufferHelper {
   }
   
   void _cleanBuffer() {
-    // Remove any leading garbage
     int firstBrace = _buffer.indexOf('{');
     if (firstBrace > 0) {
       _buffer = _buffer.substring(firstBrace);

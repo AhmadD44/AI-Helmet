@@ -9,7 +9,6 @@ class BackendAuthApi {
     required String firebaseIdToken,
     required String deviceId,
   }) async {
-    // 1) verify user
     final me = await http.get(
       Uri.parse('$baseUrl/api/v1/users/me'),
       headers: {'Authorization': 'Bearer $firebaseIdToken'},
@@ -18,7 +17,6 @@ class BackendAuthApi {
       throw Exception('users/me failed: ${me.statusCode} ${me.body}');
     }
 
-    // 2) register device (same as python)
     final res = await http.post(
       Uri.parse('$baseUrl/api/v1/devices'),
       headers: {
@@ -31,7 +29,6 @@ class BackendAuthApi {
       }),
     );
 
-    // if your backend returns 409 when device already exists, you can treat as ok
     if (res.statusCode >= 400 && res.statusCode != 409) {
       throw Exception('devices failed: ${res.statusCode} ${res.body}');
     }

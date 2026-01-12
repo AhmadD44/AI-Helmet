@@ -22,7 +22,7 @@ class LoginCubit extends Cubit<LoginState> {
       final user = userCredential.user;
 
       if (user != null && !user.emailVerified) {
-        await Auth().auth.signOut(); // Optional: Sign them out immediately
+        await Auth().auth.signOut(); 
         Auth().showErrorSnackBar(
           context,
           "Please verify your email before signing in.",
@@ -34,19 +34,6 @@ class LoginCubit extends Cubit<LoginState> {
           final userForJwt = FirebaseAuth.instance.currentUser;
           final idToken = await userForJwt?.getIdToken();
           print('Tokennn: $idToken');
-      //     final response = await http.post(
-      //   Uri.parse('https://your-backend.com/api/some-endpoint'),
-      //   headers: {
-      //     'Authorization': 'Bearer $idToken',
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: jsonEncode({
-      //     "someData": "value",
-      //   }),
-      // );
-
-      // print('status: ${response.statusCode}');
-      // print('body: ${response.body}');
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -58,7 +45,6 @@ class LoginCubit extends Cubit<LoginState> {
           backgroundColor: const Color(0xFF00D1FF),
         ),
       );
-      // Navigator.push(context,MaterialPageRoute(builder: (context) => HomeScreen()));
       emit(LoginSuccess());
     } on FirebaseAuthException catch (e) {
       Auth().showErrorSnackBar(context, e.message ?? 'Auth error');

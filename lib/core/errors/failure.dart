@@ -52,8 +52,7 @@ class ServerFailure extends Failure {
       );
     } else {
       return ServerFailure(
-        // errMessage: 'Oops there is an error, please try again later!',
-        errMessage: response.toString(),
+        errMessage: 'Oops there is an error, please try again later!',
       );
     }
   }

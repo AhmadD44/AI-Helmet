@@ -19,7 +19,6 @@ class RouteService {
         final geometry = data['routes'][0]['geometry'];
         final coordinates = geometry['coordinates'] as List;
         
-        // Convert coordinates to latlng.LatLng objects
         return coordinates.map((coord) {
           return latlng.LatLng(coord[1].toDouble(), coord[0].toDouble());
         }).toList();
@@ -28,11 +27,9 @@ class RouteService {
       print('❌ Routing error: $e');
     }
     
-    // Fallback: straight line if routing fails
     return [start, end];
   }
   
-  // Calculate total distance and duration
   Future<Map<String, dynamic>> getRouteInfo({
     required latlng.LatLng start,
     required latlng.LatLng end,
@@ -47,8 +44,8 @@ class RouteService {
         final route = data['routes'][0];
         
         return {
-          'distance': route['distance'], // in meters
-          'duration': route['duration'], // in seconds
+          'distance': route['distance'],
+          'duration': route['duration'], 
         };
       }
     } catch (e) {

@@ -55,8 +55,6 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
     _fallbackTimer?.cancel();
     super.dispose();
   }
-
-  // 🔧 SAFE NORMALIZER
   String normalizeLebaneseNumber(String raw) {
     String phone = raw.replaceAll(RegExp(r'\s+'), '');
     if (phone.startsWith('+')) phone = phone.substring(1);
@@ -69,7 +67,6 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
 
   Future<void> sendLocationToEmergencyContacts({bool auto = false}) async {
     try {
-      // 📍 LOCATION
       Location location = Location();
 
       bool enabled = await location.serviceEnabled();
@@ -85,7 +82,6 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
       final mapsUrl =
           'https://www.google.com/maps/search/?api=1&query=${loc.latitude},${loc.longitude}';
 
-      // 🔐 USER
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
@@ -111,14 +107,12 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
           'Possible accident detected.\n\n'
           '📍 Location:\n$mapsUrl';
 
-      // 🟢 AUTO → SMS ONLY
       if (auto) {
          sendSms(contacts, message);
         debugPrint('[CrashAlert] Auto SMS sent');
         return;
       }
 
-      // 🟡 MANUAL → WhatsApp
       for (final phone in contacts) {
         final uri = Uri.parse(
           'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
@@ -127,7 +121,6 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
         await Future.delayed(const Duration(seconds: 1));
       }
 
-      // ⏱ FALLBACK SMS
       _fallbackTimer = Timer(const Duration(seconds: 10), () async {
         debugPrint('[CrashAlert] WhatsApp ignored → SMS fallback');
         sendSms(contacts, message);
@@ -149,7 +142,6 @@ class _CrashAlertPageState extends State<CrashAlertPage> {
       debugPrint('❌ Could not open SMS app for $phone');
     }
 
-    // small delay so Android doesn’t choke when opening multiple times
     await Future.delayed(const Duration(milliseconds: 300));
   }
 }

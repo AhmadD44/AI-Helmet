@@ -6,33 +6,28 @@ import 'package:latlong2/latlong.dart' as latlng;
 import 'package:location/location.dart';
 import 'package:http/http.dart' as http;
 
-// REMOVE: import 'telemetry.dart'; // No longer needed!
 
 class MapView extends StatefulWidget {
-  // REMOVE: final Telemetry? telemetry; // No ESP telemetry in MapView!
-  
-  // Keep only map/location related properties
-  final latlng.LatLng? initialLocation;  // For initial map center
+  final latlng.LatLng? initialLocation;  
   final latlng.LatLng? destination;
   final bool tripActive;
-  final void Function(latlng.LatLng? dest)? onDestinationSelected; // Changed to nullable
+  final void Function(latlng.LatLng? dest)? onDestinationSelected; 
   final void Function(bool isTripActive)? onTripStatusChanged;
   final void Function(latlng.LatLng destination)? onTripStarted;
   final void Function(List<latlng.LatLng> routePoints)? onRouteCalculated;
   
-  // Add callback for mobile GPS updates (optional, if other components need it)
   final void Function(latlng.LatLng mobileLocation)? onMobileLocationUpdate;
 
   const MapView({
     super.key,
-    this.initialLocation,  // Changed from telemetry
+    this.initialLocation, 
     this.destination,
     this.tripActive = false,
     this.onDestinationSelected,
     this.onTripStatusChanged,
     this.onTripStarted,
     this.onRouteCalculated,
-    this.onMobileLocationUpdate,  // New: for mobile GPS updates
+    this.onMobileLocationUpdate,  
   });
 
   @override
@@ -43,22 +38,18 @@ class MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
   bool _centeredOnce = false;
   
-  // Routing variables
   List<latlng.LatLng> _routePoints = [];
   bool _isCalculatingRoute = false;
   double _routeDistance = 0.0;
   int _routeDuration = 0;
   
-  // Location package variables - ONLY FOR MAP/NAVIGATION
   final Location _location = Location();
   LocationData? _currentMobileLocation;
   bool _isMobileGpsAvailable = false;
   bool _isListening = false;
   StreamSubscription<LocationData>? _locationSubscription;
 
-  /// Get current location for MAP DISPLAY ONLY
   latlng.LatLng get _currentLocation {
-  // Use ONLY mobile GPS
   if (_currentMobileLocation != null &&
       _currentMobileLocation!.latitude != null &&
       _currentMobileLocation!.longitude != null &&
@@ -70,12 +61,9 @@ class MapViewState extends State<MapView> {
     );
   }
   
-  // If no valid mobile GPS, use a default location
-  // You can change this to your preferred default
-  return const latlng.LatLng(33.5631, 35.3689); // Saida, Lebanon
+  return const latlng.LatLng(33.5631, 35.3689); 
 }
 
-  /// Get current GPS source for display
   String get _currentGpsSource {
     return _isMobileGpsAvailable ? "GPS Available" : "No GPS";
   }
@@ -94,12 +82,10 @@ class MapViewState extends State<MapView> {
   if (hasValidMobileGps) {
     _mapController.move(_currentLocation, 16);
   } else {
-    // If no mobile GPS, center on default location
     _mapController.move(const latlng.LatLng(33.5631, 35.3689), 13);
   }
 }
 
-  // ROUTING METHODS (unchanged)
   Future<void> _calculateRoute() async {
     if (widget.destination == null) return;
     
@@ -140,22 +126,17 @@ class MapViewState extends State<MapView> {
     }
   }
 
-  // Check if two points are close enough to be considered the same
   bool _isSameLocation(latlng.LatLng point1, latlng.LatLng point2) {
-    // Tolerance of 0.0001 degrees (approx 11 meters)
     final latDiff = (point1.latitude - point2.latitude).abs();
     final lngDiff = (point1.longitude - point2.longitude).abs();
     return latDiff < 0.0001 && lngDiff < 0.0001;
   }
 
-  // Handle map tap - toggles destination on/off
   void _handleMapTap(latlng.LatLng point) {
     if (widget.onDestinationSelected != null) {
-      // If there's a current destination and user taps near it, remove it
       if (widget.destination != null && _isSameLocation(point, widget.destination!)) {
         widget.onDestinationSelected!(null);
       } else {
-        // Otherwise, set the new destination
         widget.onDestinationSelected!(point);
       }
     }
@@ -189,7 +170,6 @@ class MapViewState extends State<MapView> {
               });
             }
             
-            // NOTIFY PARENT ABOUT MOBILE GPS UPDATE (OPTIONAL)
             widget.onMobileLocationUpdate?.call(
               latlng.LatLng(
                 currentLocation.latitude!,
@@ -230,7 +210,7 @@ class MapViewState extends State<MapView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _mapController.move(_saidaLocation, 13);
-        _initMobileGps();  // Start mobile GPS for map/navigation
+        _initMobileGps(); 
       }
     });
   }
@@ -248,12 +228,10 @@ class MapViewState extends State<MapView> {
       });
     }
     
-    // Calculate route when destination changes
     if (widget.destination != oldWidget.destination) {
       if (widget.destination != null) {
         _calculateRoute();
       } else {
-        // Clear route when destination is removed
         _routePoints.clear();
         _routeDistance = 0.0;
         _routeDuration = 0;
@@ -287,14 +265,12 @@ class MapViewState extends State<MapView> {
             },
           ),
           children: [
-            // 🌍 Tiles
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.isd',
               tileProvider: NetworkTileProvider(),
             ),
 
-            // 📍 Current position marker (based on mobile GPS or initial location)
             MarkerLayer(
               markers: [
                 Marker(
@@ -329,7 +305,6 @@ class MapViewState extends State<MapView> {
               ],
             ),
 
-            // 🎯 Destination marker
             if (widget.destination != null)
               MarkerLayer(
                 markers: [
@@ -363,7 +338,6 @@ class MapViewState extends State<MapView> {
                 ],
               ),
 
-            // 🛣️ Blue navigation route (when trip is active)
             if (widget.tripActive && _routePoints.isNotEmpty)
               PolylineLayer(
                 polylines: [
@@ -377,7 +351,6 @@ class MapViewState extends State<MapView> {
                 ],
               ),
 
-            // 📏 Route preview (when not active)
             if (!widget.tripActive && _routePoints.isNotEmpty)
               PolylineLayer(
                 polylines: [
@@ -393,7 +366,6 @@ class MapViewState extends State<MapView> {
           ],
         ),
 
-        // GPS source indicator
         Positioned(
           top: 10,
           left: 10,
@@ -424,7 +396,6 @@ class MapViewState extends State<MapView> {
             ),
           ),
 
-        // Route info overlay
         if (_routePoints.isNotEmpty && !widget.tripActive)
           Positioned(
             top: 80,
@@ -469,7 +440,6 @@ class MapViewState extends State<MapView> {
             ),
           ),
 
-        // Route calculation loading
         if (_isCalculatingRoute)
           Positioned(
             top: 80,
@@ -503,7 +473,6 @@ class MapViewState extends State<MapView> {
             ),
           ),
 
-        // Trip status indicator
         if (widget.tripActive)
           Positioned(
             top: 10,
@@ -543,7 +512,6 @@ class MapViewState extends State<MapView> {
             ),
           ),
 
-        // Recenter button
         Positioned(
           bottom: 20,
           right: 20,
@@ -557,7 +525,6 @@ class MapViewState extends State<MapView> {
           ),
         ),
 
-        // Instructions
         if (widget.destination == null)
           Positioned(
             bottom: 150,

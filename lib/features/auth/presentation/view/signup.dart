@@ -89,8 +89,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
-
-                      // Full name
+                      
                       TextFormField(
                         controller: _nameController,
                         decoration: aiInputDecoration(
@@ -106,7 +105,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Emergency contact 1
                       TextFormField(
                         controller: _contact1Controller,
                         decoration: aiInputDecoration(
@@ -123,7 +121,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Emergency contact 2
                       TextFormField(
                         controller: _contact2Controller,
                         decoration: aiInputDecoration(
@@ -140,7 +137,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Email
                       TextFormField(
                         controller: _emailController,
                         decoration: aiInputDecoration(
@@ -159,7 +155,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Password
                       TextFormField(
                         controller: _passwordController,
                         decoration: aiInputDecoration(
@@ -177,7 +172,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Phone Number
                       TextFormField(
                         controller: _phoneController,
                         decoration: aiInputDecoration(
@@ -196,9 +190,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                       ElevatedButton(
                         onPressed: () async {
-                          // TODO: implement your sign-up logic
                           if (_formKey.currentState!.validate()) {
-                            // setState(() => isloading = true);
 
                             await BlocProvider.of<SignupCubit>(
                               context,
@@ -212,18 +204,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               context: context,
                             );
 
-                            // setState(() => isloading = false);
                           } else {
                             Auth().showErrorSnackBar(
                               context,
                               "Please fill all required feilds",
                             );
                           }
-                          //  Navigator.push(
-                          //   context,
-                          //   MaterialPageRoute(
-                          //     builder: (context) => const SignInScreen(),
-                          //   ),);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF00D1FF),

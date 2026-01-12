@@ -105,32 +105,27 @@ class _TripsHeader extends StatelessWidget {
   }
 }
 
-/* ------------------------------ Trip Card ------------------------------ */
 
 class _TripCard extends StatelessWidget {
-  final AllTripsModel trip; // ✅ your model type
+  final AllTripsModel trip; 
   const _TripCard({required this.trip});
 
   @override
   Widget build(BuildContext context) {
     final bg = const Color(0xFF101A2E);
 
-    // ✅ Map status to a pill
     final s = (trip.status ?? '').toLowerCase().trim();
     final statusUi = _statusStyle(s);
 
-    // ✅ Safe date formatting (no intl package needed)
     final startText = _fmtDateTime(trip.startTime);
     final endText = _fmtDateTime(trip.endTime);
 
-    // ✅ Units (adjust if backend uses meters/km)
     final dist = trip.totalDistance;
     final speed = trip.averageSpeed;
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () {
-        // UI only for now: you can navigate to Trip Details later
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Trip ${trip.tripId ?? ''} details soon')),
         );
@@ -161,7 +156,6 @@ class _TripCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top row: trip id + status pill
             Row(
               children: [
                 Expanded(
@@ -185,7 +179,6 @@ class _TripCard extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // Device ID line
             Row(
               children: [
                 const Icon(Icons.memory, size: 16, color: Colors.white54),
@@ -205,7 +198,6 @@ class _TripCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Time row chips
             Wrap(
               spacing: 10,
               runSpacing: 10,
@@ -217,7 +209,7 @@ class _TripCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Stats chips
+          
             Wrap(
               spacing: 10,
               runSpacing: 10,
@@ -258,8 +250,6 @@ class _TripCard extends StatelessWidget {
   }
 
   _StatusUi _statusStyle(String status) {
-    // You can customize based on backend values:
-    // example: "completed", "in_progress", "cancelled", "crashed"
     if (status.contains('crash')) {
       return const _StatusUi(
         label: 'Crash',

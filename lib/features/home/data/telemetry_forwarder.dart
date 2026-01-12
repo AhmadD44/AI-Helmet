@@ -47,22 +47,18 @@ Telemetry? parseTelemetry(String rawData) {
 
 Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
   try {
-    // Check if this is a RISK_STATUS message
     if (jsonData['type'] == 'RISK_STATUS') {
       print('⚠️ RISK_STATUS message detected in telemetry parser');
       print('   Level: ${jsonData['payload']?['level']}');
       print('   Score: ${jsonData['payload']?['score']}');
-      // We handle RISK_STATUS separately via WebSocketRiskListener
       return null;
     }
     
-    // Check if this is telemetry data
     if (jsonData['type'] != 'telemetry' && !jsonData.containsKey('ts')) {
       print('⚠️ Unknown message type: ${jsonData['type']}');
       return null;
     }
     
-    // Ensure all numbers are properly typed
     final convertedData = _convertNumbers(jsonData);
     
     final auth = FirebaseAuth.instance;
@@ -76,7 +72,6 @@ Telemetry? _parseTelemetryFromJson(Map<String, dynamic> jsonData) {
     enhancedPayload['user_id'] = uid ?? 'unknown_user';
     enhancedPayload['parsed_at'] = DateTime.now().millisecondsSinceEpoch;
 
-    // Show FULL data before creating Telemetry object
     print('🎯 TELEMETRY DATA RECEIVED:');
     print(jsonEncode(enhancedPayload));
     print('🎯 END OF TELEMETRY DATA');
@@ -130,7 +125,6 @@ dynamic _convertNumbers(dynamic value) {
   } else if (value is List) {
     return value.map(_convertNumbers).toList();
   } else if (value is String) {
-    // Try to convert numeric strings
     if (_isNumeric(value)) {
       if (value.contains('.') || value.contains('e') || value.contains('E')) {
         try {

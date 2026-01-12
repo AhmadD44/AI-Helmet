@@ -615,7 +615,6 @@ class TelemetryCubit extends Cubit<TelemetryState> {
         return;
       }
       final idToken = await user.getIdToken();
-      // final uid = user.uid;
       final url = Uri.parse(
         'http://ec2-3-14-15-242.us-east-2.compute.amazonaws.com:8000/api/v1/devices',
       );
@@ -624,7 +623,7 @@ class TelemetryCubit extends Cubit<TelemetryState> {
         url,
         headers: {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer $idToken',  // 👈 ADD TOKEN HERE
+    'Authorization': 'Bearer $idToken',  
   },
         body: jsonEncode({"device_id": "HELMET_001", "model_name": "Smart Helmet v1"}),
       );

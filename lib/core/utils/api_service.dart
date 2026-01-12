@@ -17,9 +17,6 @@ class ApiService {
     );
   }
 
-  // ========== HEADER HELPER ==========
-
-  /// Create headers with required token
   Map<String, dynamic> _createHeaders({required String token}) {
     return {
       'Authorization': 'Bearer $token',

@@ -35,7 +35,6 @@ class RiskStatusIndicator extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Risk Icon
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -51,7 +50,6 @@ class RiskStatusIndicator extends StatelessWidget {
             
             const SizedBox(width: 12),
             
-            // Risk Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -86,7 +84,6 @@ class RiskStatusIndicator extends StatelessWidget {
                     ),
                   ),
                   
-                  // Show reasons if any
                   if (riskData!.reasons.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -105,7 +102,6 @@ class RiskStatusIndicator extends StatelessWidget {
               ),
             ),
             
-            // Speed
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(

@@ -1,4 +1,3 @@
-// ingest_ws_client.dart
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -12,7 +11,6 @@ class IngestWsClient {
   bool _isConnecting = false;
   bool _isConnected = false;
 
-  // For automatic reconnection
   Timer? _reconnectTimer;
   int _reconnectAttempts = 0;
   static const int maxReconnectAttempts = 5;
@@ -35,9 +33,8 @@ class IngestWsClient {
       
       _channel = WebSocketChannel.connect(ingestUri);
       
-      // Listen for connection close
       _channel!.stream.listen(
-        (_) {}, // We don't need incoming data
+        (_) {}, 
         onError: (error) {
           if (debugLog) {
             print('❌ WebSocket error: $error');
@@ -54,7 +51,7 @@ class IngestWsClient {
       
       _isConnected = true;
       _isConnecting = false;
-      _reconnectAttempts = 0; // Reset on successful connection
+      _reconnectAttempts = 0; 
       
       if (debugLog) {
         print('✅ WebSocket connected');
@@ -70,7 +67,6 @@ class IngestWsClient {
   }
 
   Future<void> send(Map<String, dynamic> payload) async {
-    // Ensure we're connected
     if (!_isConnected) {
       await connect();
     }
@@ -87,7 +83,6 @@ class IngestWsClient {
       
       if (debugLog) {
         print('📤 Sending to WebSocket: ${jsonString.length} bytes');
-        // Optional: log first 100 chars
         if (jsonString.length > 100) {
           print('📋 Data preview: ${jsonString.substring(0, 100)}...');
         }

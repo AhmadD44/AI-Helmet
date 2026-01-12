@@ -89,10 +89,8 @@ class AppDrawer extends StatelessWidget {
               onTap: () async {
                 await FirebaseAuth.instance.signOut();
 
-                // Close drawer
                 Navigator.of(context).pop();
 
-                // Navigate to login screen
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (context) => const SignInScreen()),

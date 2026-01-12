@@ -16,14 +16,11 @@ class EspBtClassicSource {
 
   StreamSubscription<List<int>>? _rxSub;
   
-  // =============== ADD THIS LINE ===============
-  final List<int> _buffer = []; // Buffer to accumulate data fragments
+  final List<int> _buffer = []; 
   
   bool _connected = false;
   bool _connecting = false;
   String? _mac;
-
-  // ===== SCAN ===== (keep as is)
 
   Future<void> initPermissions() async {
     try {
@@ -49,8 +46,6 @@ class EspBtClassicSource {
       await _bt.stopScan();
     } catch (_) {}
   }
-
-  // ===== CONNECT / RX =====
 
   Future<void> connect(String mac) async {
     print("🔄 CONNECT called for MAC: $mac");
@@ -128,15 +123,12 @@ class EspBtClassicSource {
     }
   }
 
-  // =============== REPLACE _onBytes WITH THIS ===============
   void _onBytes(Uint8List bytes) {
     if (bytes.isEmpty) return;
     
-    // Process the bytes using the working logic
     _processData(bytes.toList());
   }
 
-  // =============== COPY EXACTLY FROM YOUR WORKING CODE ===============
    void _processData(List<int> bytes) {
   if (bytes.isEmpty) return;
   
@@ -153,7 +145,6 @@ class EspBtClassicSource {
       break;
     }
     
-    // Find the matching closing brace
     int braceCount = 0;
     int jsonEnd = -1;
     
@@ -170,11 +161,9 @@ class EspBtClassicSource {
     }
     
     if (jsonEnd == -1) {
-      // Incomplete JSON, wait for more data
       break;
     }
     
-    // Extract the complete JSON object
     String jsonString = bufferStr.substring(jsonStart, jsonEnd + 1);
     
     if (debugLog) {
@@ -183,10 +172,8 @@ class EspBtClassicSource {
     
     _processSingleJson(jsonString);
     
-    // Remove processed data
     int removeUpTo = jsonEnd + 1;
     
-    // Skip any whitespace/newlines
     if (removeUpTo < bufferStr.length && 
         (bufferStr[removeUpTo] == '\r' || bufferStr[removeUpTo] == '\n')) {
       removeUpTo++;
@@ -213,10 +200,8 @@ class EspBtClassicSource {
       print("🎯 Parsing JSON (${jsonString.length} chars)");
     }
     
-    // Parse JSON - keep it exactly as received
     final decoded = jsonDecode(jsonString);
     
-    // Send to stream as-is
     _controller.add(decoded);
     
   } catch (e) {
@@ -226,7 +211,6 @@ class EspBtClassicSource {
   }
 }
 
-  // =============== KEEP REST OF THE CODE AS IS ===============
 
   void _handleDisconnection(String reason) {
     print("🔌 Handling disconnection: $reason");
@@ -243,7 +227,7 @@ class EspBtClassicSource {
   Future<void> _cleanupConnection() async {
     await _rxSub?.cancel();
     _rxSub = null;
-    _buffer.clear(); // Clear buffer on disconnect
+    _buffer.clear();
   }
 
   Future<void> disconnect() async {

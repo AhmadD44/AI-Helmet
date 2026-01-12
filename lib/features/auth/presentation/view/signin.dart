@@ -81,7 +81,6 @@ Navigator.of(context).pushReplacement(
                     ),
                     const SizedBox(height: 32),
 
-                    // Email
                     TextField(
                       controller: _emailController,
                       decoration: aiInputDecoration(
@@ -91,7 +90,6 @@ Navigator.of(context).pushReplacement(
                     ),
                     const SizedBox(height: 16),
 
-                    // Password
                     TextField(
                       controller: _passwordController,
                       obscureText: true,

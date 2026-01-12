@@ -32,7 +32,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
 
       if (snapshot.exists) {
         final data = snapshot.data();
-        // Convert int to String safely
         _contact1Controller.text =
             data?['contact1'] != null ? data!['contact1'].toString() : '';
         _contact2Controller.text =
@@ -58,7 +57,6 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
       final docRef =
           FirebaseFirestore.instance.collection('users').doc(userId);
 
-      // Convert text to int safely
       final contact1 = int.tryParse(_contact1Controller.text.trim());
       final contact2 = int.tryParse(_contact2Controller.text.trim());
 
