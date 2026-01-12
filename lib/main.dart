@@ -1,4 +1,4 @@
-// main.dart
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -34,10 +34,8 @@ class AIHelmetApp extends StatelessWidget {
     User? user = FirebaseAuth.instance.currentUser;
 
     if (user != null) {
-      // ✅ User already logged in
       signedIn = true;
     } else {
-      // ❌ Not logged in
       signedIn = false;
     }
 
